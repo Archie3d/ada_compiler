@@ -46,8 +46,6 @@ ada [-o <program>] <source> [<source>...]
 
 | Option | Effect |
 | --- | --- |
-| Option | Effect |
-| --- | --- |
 | `-o <file>` | Name of the produced file |
 | `--emit-ir` | Stop after generating QBE IL |
 | `-S` | Stop after generating assembly |
