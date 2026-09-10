@@ -1,0 +1,4 @@
+privateerrors.adb:14:5: error: '.' reaches inside a value of 'Pile', whose representation 'Piles' keeps to itself
+privateerrors.adb:16:9: error: an aggregate spells out the components of 'Pile', whose representation 'Piles' keeps to itself
+privateerrors.adb:20:9: error: 'Pile' is private, so 'Piles' has to be the one to say what this operator means
+privateerrors.adb:29:8: error: '.' reaches inside a value of 'Pile', whose representation 'Piles' keeps to itself

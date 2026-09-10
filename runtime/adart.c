@@ -1,0 +1,306 @@
+/* Minimal run time support for programs compiled by adac. */
+
+#include "adart.h"
+
+#include "adaio.h"
+
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define IMAGE_BUFFERS 8
+#define IMAGE_BUFFER_SIZE 64
+
+/* Indexed by AdaExceptionId; the compiler writes the same spellings when it
+   raises an exception itself. */
+static const char* const exceptionNames[] = {
+    "EXCEPTION",     "CONSTRAINT_ERROR", "PROGRAM_ERROR", "STORAGE_ERROR", "NUMERIC_ERROR",
+    "TASKING_ERROR", "STATUS_ERROR",     "MODE_ERROR",    "NAME_ERROR",    "USE_ERROR",
+    "DEVICE_ERROR",  "END_ERROR",        "DATA_ERROR",    "LAYOUT_ERROR"
+};
+
+void __ada_raise(int id)
+{
+    int count = (int)(sizeof exceptionNames / sizeof exceptionNames[0]);
+
+    if (id < 1 || id >= count) {
+        id = ADA_PROGRAM_ERROR;
+    }
+    __ada_exception = id;
+    __ada_exception_name = exceptionNames[id];
+}
+
+void* __ada_allocate(long size)
+{
+    void* address;
+
+    if (size <= 0) {
+        size = 1;
+    }
+    address = calloc(1, (size_t)size);
+    if (address == NULL) {
+        __ada_raise(ADA_STORAGE_ERROR);
+    }
+    return address;
+}
+
+void __ada_deallocate(void* address)
+{
+    free(address);
+}
+
+/* Integer'Image renders a leading space in front of non-negative values.  The
+   buffers rotate so that a few images can be combined in one expression. */
+const char* __ada_image_integer(int value)
+{
+    static char buffers[IMAGE_BUFFERS][IMAGE_BUFFER_SIZE];
+    static int next = 0;
+
+    char* buffer = buffers[next];
+    next = (next + 1) % IMAGE_BUFFERS;
+
+    if (value < 0) {
+        snprintf(buffer, IMAGE_BUFFER_SIZE, "%d", value);
+    } else {
+        snprintf(buffer, IMAGE_BUFFER_SIZE, " %d", value);
+    }
+    return buffer;
+}
+
+/* The image of an enumeration value is its literal in upper case, and the image
+   of a character is the literal between its quotes. */
+const char* __ada_image_enum(int value, const char** names, int count)
+{
+    static char buffers[IMAGE_BUFFERS][IMAGE_BUFFER_SIZE];
+    static int next = 0;
+
+    char* buffer = buffers[next];
+    const char* name;
+    int i;
+
+    next = (next + 1) % IMAGE_BUFFERS;
+
+    if (value < 0 || value >= count) {
+        __ada_raise(ADA_CONSTRAINT_ERROR);
+        buffer[0] = '\0';
+        return buffer;
+    }
+
+    name = names[value];
+    for (i = 0; name[i] != '\0' && i < IMAGE_BUFFER_SIZE - 1; ++i) {
+        buffer[i] = (char)toupper((unsigned char)name[i]);
+    }
+    buffer[i] = '\0';
+    return buffer;
+}
+
+const char* __ada_image_character(int value)
+{
+    static char buffers[IMAGE_BUFFERS][IMAGE_BUFFER_SIZE];
+    static int next = 0;
+
+    char* buffer = buffers[next];
+    next = (next + 1) % IMAGE_BUFFERS;
+
+    snprintf(buffer, IMAGE_BUFFER_SIZE, "'%c'", value);
+    return buffer;
+}
+
+/* 'Value ignores the blanks around what it is given, so both ends are trimmed
+   before anything is made of the rest. */
+static void trim(const char* text, int length, int* from, int* to)
+{
+    int start = 0;
+    int stop = length;
+
+    while (start < stop && isspace((unsigned char)text[start])) {
+        ++start;
+    }
+    while (stop > start && isspace((unsigned char)text[stop - 1])) {
+        --stop;
+    }
+    *from = start;
+    *to = stop;
+}
+
+int __ada_value_integer(const char* text, int length, int low, int high)
+{
+    int start;
+    int stop;
+    int sign = 1;
+    long value = 0;
+    int digits = 0;
+    int i;
+
+    trim(text, length, &start, &stop);
+    if (start < stop && (text[start] == '+' || text[start] == '-')) {
+        sign = text[start] == '-' ? -1 : 1;
+        ++start;
+    }
+    for (i = start; i < stop; ++i) {
+        if (!isdigit((unsigned char)text[i])) {
+            __ada_raise(ADA_CONSTRAINT_ERROR);
+            return low;
+        }
+        value = value * 10 + (text[i] - '0');
+        ++digits;
+        if (value > 2147483647L) {
+            __ada_raise(ADA_CONSTRAINT_ERROR);
+            return low;
+        }
+    }
+    if (digits == 0) {
+        __ada_raise(ADA_CONSTRAINT_ERROR);
+        return low;
+    }
+
+    value *= sign;
+    if (value < (long)low || value > (long)high) {
+        __ada_raise(ADA_CONSTRAINT_ERROR);
+        return low;
+    }
+    return (int)value;
+}
+
+/* An enumeration literal is named without regard to case, which is why the
+   comparison here folds both sides rather than the text alone. */
+int __ada_value_enum(const char* text, int length, const char** names, int count)
+{
+    int start;
+    int stop;
+    int i;
+
+    trim(text, length, &start, &stop);
+    for (i = 0; i < count; ++i) {
+        const char* name = names[i];
+        int j;
+
+        for (j = 0; j < stop - start && name[j] != '\0'; ++j) {
+            if (tolower((unsigned char)text[start + j]) != tolower((unsigned char)name[j])) {
+                break;
+            }
+        }
+        if (j == stop - start && name[j] == '\0') {
+            return i;
+        }
+    }
+
+    __ada_raise(ADA_CONSTRAINT_ERROR);
+    return 0;
+}
+
+/* A character is named by its spelling, so its value is written between quotes
+   the way __ada_image_character writes it. */
+int __ada_value_character(const char* text, int length)
+{
+    int start;
+    int stop;
+
+    trim(text, length, &start, &stop);
+    if (stop - start != 3 || text[start] != '\'' || text[stop - 1] != '\'') {
+        __ada_raise(ADA_CONSTRAINT_ERROR);
+        return 0;
+    }
+    return (unsigned char)text[start + 1];
+}
+
+/* Arrays compare element by element; a prefix is smaller than what extends it. */
+int __ada_string_compare(const char* left, int leftLength, const char* right, int rightLength)
+{
+    int shorter = leftLength < rightLength ? leftLength : rightLength;
+    int i;
+
+    for (i = 0; i < shorter; ++i) {
+        unsigned char leftCharacter = (unsigned char)left[i];
+        unsigned char rightCharacter = (unsigned char)right[i];
+        if (leftCharacter != rightCharacter) {
+            return leftCharacter < rightCharacter ? -1 : 1;
+        }
+    }
+    if (leftLength == rightLength) {
+        return 0;
+    }
+    return leftLength < rightLength ? -1 : 1;
+}
+
+/* Renders a real value the way Ada.Text_IO does.  Fore is the least number of
+   characters before the point including the sign, Aft the number after it, and
+   Exp the width of the exponent field counting its sign.  An Exp of zero asks
+   for plain decimal notation. */
+void __ada_format_float(char* buffer, int size, double value, int fore, int aft, int exponent)
+{
+    char digits[64];
+    char sign;
+    int power;
+    int written;
+    int i;
+
+    if (fore < 1) {
+        fore = 1;
+    }
+    if (aft < 1) {
+        aft = 1;
+    }
+
+    if (exponent <= 0) {
+        snprintf(buffer, size, "%*.*f", fore + 1 + aft, aft, value);
+        return;
+    }
+
+    sign = value < 0.0 ? '-' : ' ';
+    snprintf(digits, sizeof digits, "%.*e", aft, value < 0.0 ? -value : value);
+
+    /* Split the mantissa from the exponent that printf produced. */
+    {
+        char* marker = strchr(digits, 'e');
+        power = marker != 0 ? (int)strtol(marker + 1, 0, 10) : 0;
+        if (marker != 0) {
+            *marker = '\0';
+        }
+    }
+
+    /* Ada counts the sign as part of the exponent field. */
+    written = snprintf(buffer, size, "%*c%sE%c", fore - 1, sign, digits, power < 0 ? '-' : '+');
+    if (written < 0 || written >= size) {
+        return;
+    }
+    power = power < 0 ? -power : power;
+    snprintf(buffer + written, size - written, "%0*d", exponent - 1, power);
+}
+
+void __ada_put_float(double value, int fore, int aft, int exponent)
+{
+    char buffer[128];
+
+    __ada_format_float(buffer, (int)sizeof buffer, value, fore, aft, exponent);
+    fputs(buffer, __ada_output_stream());
+}
+
+const char* __ada_image_float(double value, int aft, int exponent)
+{
+    static char buffers[IMAGE_BUFFERS][IMAGE_BUFFER_SIZE];
+    static int next = 0;
+
+    char* buffer = buffers[next];
+    next = (next + 1) % IMAGE_BUFFERS;
+
+    __ada_format_float(buffer, IMAGE_BUFFER_SIZE, value, 2, aft, exponent);
+    return buffer;
+}
+
+/* Ada rounds away from zero when a real value becomes an integer, while a cast
+   would drop the fraction. */
+long long __ada_round_to_integer(double value)
+{
+    if (value < 0.0) {
+        return -(long long)(-value + 0.5);
+    }
+    return (long long)(value + 0.5);
+}
+
+void __ada_unhandled(const char* name)
+{
+    fflush(stdout);
+    fprintf(stderr, "\nraised %s\n", name == 0 ? "EXCEPTION" : name);
+}

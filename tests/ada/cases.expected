@@ -1,0 +1,33 @@
+Sensors
+elevation  42
+azimuth    42
+distance   42
+Days
+initial balance
+report for TUE
+report for WED
+report for THU
+closing balance
+Bins
+update  1
+update  2
+empty   1
+empty   2
+empty   1
+empty   2
+no such bin
+Working
+MON works
+TUE works
+WED works
+THU works
+FRI works
+SAT rests
+SUN rests
+Letters
+a  1
+b 20
+c 30
+d 30
+e  1
+f  0

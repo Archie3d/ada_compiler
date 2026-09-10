@@ -1,0 +1,6 @@
+varianterrors.adb:23:4: error: an object of 'Shape' has to fix its discriminants, as in 'X : Shape (...)'
+varianterrors.adb:30:39: error: 'Kind' was fixed at CIRCLE when the object was declared
+varianterrors.adb:34:20: error: a discriminant takes one value, not a range
+varianterrors.adb:39:5: error: 'Width' belongs to another variant of 'Shape' than the one this value has
+varianterrors.adb:42:5: error: 'Kind' is a discriminant, fixed when the object was declared
+varianterrors.adb:45:32: error: 'Width' belongs to another variant of 'Shape' than this one

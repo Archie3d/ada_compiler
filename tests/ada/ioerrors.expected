@@ -1,0 +1,6 @@
+ioerrors.adb:20:55: error: 'Ada.Text_IO.Integer_IO' expects an integer type, and 'Point' is not one
+ioerrors.adb:21:51: error: 'Ada.Text_IO.Float_IO' expects a floating point type, and 'Integer' is not one
+ioerrors.adb:22:56: error: 'Ada.Text_IO.Enumeration_IO' expects a discrete type, and 'Point' is not one
+ioerrors.adb:23:4: error: 'Element_Type' is not a formal of 'Ada.Text_IO.Integer_IO', which takes 'Num'
+ioerrors.adb:29:8: error: no visible subprogram matches this call
+ioerrors.adb:30:8: error: no visible subprogram matches this call

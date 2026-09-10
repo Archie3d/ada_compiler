@@ -1,0 +1,14 @@
+default  5.000000000E-01 2.5000000E+00 1.000000E+30
+fixed     2.50  0.25  1.50
+digits   10  8  7  6
+bounds   -10.00  10.00   0.00
+image   2.5000000E+00 1.50000E+00
+arith     0.0000  1.2500  1.5000  3.3750
+named     3.14159  3.14159
+convert    5   3  -3   3.50
+compose   1.25  2.50  3.75
+total     8.00  16.00
+compared
+assignment out of range
+conversion out of range
+result out of range

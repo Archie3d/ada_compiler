@@ -1,0 +1,9 @@
+bounds  1 10 -5  3
+image: 4
+  1  2  3  4
+doubled  8
+shift -1
+took  2
+argument out of range
+result out of range
+assignment out of range

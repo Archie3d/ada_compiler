@@ -1,0 +1,19 @@
+Writing
+Reading
+ 1: first line
+ 2: second line
+ 3: count:  42
+Fields
+dropped count:
+Numbers
+   7
+Queries
+open textfiles.tmp
+mode in_file
+closed
+Redirection
+recovered this goes to the file
+Errors
+name_error
+status_error
+mode_error

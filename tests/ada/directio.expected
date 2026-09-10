@@ -1,0 +1,15 @@
+Filling
+  5
+Random access
+  4   40
+  1   10
+Rewriting
+  99  999
+Walking
+   10  999   30   40   50
+Modes
+inout_file
+in_file
+mode_error
+Beyond the end
+end_error

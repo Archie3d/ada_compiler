@@ -1,0 +1,6 @@
+empty TRUE
+size  4
+  40  30  20  10
+empty again TRUE
+underflow
+overflow

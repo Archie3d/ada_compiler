@@ -1,0 +1,10 @@
+caseerrors.adb:16:4: error: the case leaves WED .. SUN uncovered
+caseerrors.adb:21:4: error: the case leaves -2147483648 .. 0 uncovered
+caseerrors.adb:21:4: error: the case leaves 3 .. 2147483647 uncovered
+caseerrors.adb:29:12: error: MON is covered by an earlier choice
+caseerrors.adb:35:12: error: TUE is covered by an earlier choice
+caseerrors.adb:42:12: error: 9 is not a value the selector can take
+caseerrors.adb:47:12: error: the range FRI .. MON is empty
+caseerrors.adb:54:7: error: 'others' has to be the last alternative of a case
+caseerrors.adb:59:9: error: a case selector has to be discrete, and 'Float' is not
+caseerrors.adb:67:12: error: choices have to be static

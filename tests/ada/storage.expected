@@ -1,0 +1,12 @@
+Sizes
+Integer   32 bits,  4 bytes
+Small      8 bits,  1 bytes
+Point     64 bits,  8 bytes
+Pair      16 bits,  2 bytes
+Object     8 bits,  1 bytes
+Addresses
+an object keeps its place
+two objects do not share one
+Round trip
+   7
+   1   2

@@ -1,0 +1,34 @@
+export data $__ada_exception = align 4 { z 4 }
+export data $__ada_exception_name = align 8 { z 8 }
+data $.str.0 = { b "Hello, world!" 0 }
+
+function $__ada_elaborate() {
+@start
+    ret
+}
+
+function $hello() {
+@start
+    call $__ada_put_line(l $.str.0, w 13)
+    %.t0 =w loadsw $__ada_exception
+    jnz %.t0, @propagate.1, @nothrow.2
+@nothrow.2
+    ret
+@propagate.1
+    ret
+}
+
+export function w $main() {
+@start
+    call $__ada_elaborate()
+    call $hello()
+    %.t1 =w loadsw $__ada_exception
+    jnz %.t1, @unhandled.4, @done.5
+@unhandled.4
+    %.t2 =l loadl $__ada_exception_name
+    call $__ada_unhandled(l %.t2)
+    ret 1
+@done.5
+    ret 0
+}
+

@@ -1,0 +1,6 @@
+values    42   -1234   2.50   1.500
+widths|  42|-1234|         42|
+digits  2.50000E+00 1.50000000000E+00
+based    16#2A#   2#101010#
+read       42   -1234   2.50
+value out of range
