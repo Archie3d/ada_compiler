@@ -163,8 +163,13 @@ bool Toolchain::adoptInstall(const std::string& binDirectory)
     if (fileExists(root + "/adalib/libadart.a")) {
         m_runtime = { root + "/adalib/libadart.a" };
     }
+#ifdef _WIN32
+    adoptProgram(binDirectory, "adac.exe", m_adac);
+    adoptProgram(binDirectory, "qbe.exe", m_qbe);
+#else
     adoptProgram(binDirectory, "adac", m_adac);
     adoptProgram(binDirectory, "qbe", m_qbe);
+#endif
     return true;
 }
 

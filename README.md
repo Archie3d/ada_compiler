@@ -10,9 +10,12 @@ cmake -S . -B build
 cmake --build build
 ctest --test-dir build
 ```
-
 The build also compiles the vendored `qbe` submodule into `build/qbe/qbe`, and
 the C run time into `build/runtime/libadart.a`.
+
+### Building on Windows
+When compiling on Windows use [Msys64](https://www.msys2.org/) environment.
+
 
 ## Installing
 

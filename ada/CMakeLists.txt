@@ -23,7 +23,7 @@ target_include_directories(${TARGET}
 target_compile_definitions(${TARGET}
     PRIVATE
         ADAC_DEFAULT_PATH="$<TARGET_FILE:adac>"
-        QBE_DEFAULT_PATH="${QBE_BUILD_DIR}/qbe"
+        QBE_DEFAULT_PATH="${QBE_EXECUTABLE}"
         CC_DEFAULT_PATH="${ADA_HOST_CC}"
         ADA_RUNTIME_DEFAULT_PATH="$<TARGET_FILE:adart>"
         ADA_LIBRARY_DEFAULT_PATH="${CMAKE_SOURCE_DIR}/runtime/ada"

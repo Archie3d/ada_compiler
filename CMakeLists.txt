@@ -16,6 +16,7 @@ set(ADA_INSTALL_INCLUDE ${ADA_INSTALL_LIBRARY}/adainclude)
 set(ADA_INSTALL_ARCHIVE ${ADA_INSTALL_LIBRARY}/adalib)
 
 set(QBE_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/qbe)
+set(QBE_EXECUTABLE ${QBE_BUILD_DIR}/qbe${CMAKE_EXECUTABLE_SUFFIX})
 
 file(GLOB_RECURSE QBE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/qbe/*.c
@@ -40,7 +41,7 @@ add_custom_command(
         ${QBE_SOURCES}
         "${CMAKE_CURRENT_SOURCE_DIR}/qbe/Makefile"
     BYPRODUCTS
-        "${QBE_BUILD_DIR}/qbe"
+        "${QBE_EXECUTABLE}"
     COMMENT "Building qbe in the CMake build tree"
     VERBATIM
 )
@@ -51,7 +52,7 @@ add_custom_target(qbe_build ALL
 
 add_executable(qbe IMPORTED GLOBAL)
 set_target_properties(qbe PROPERTIES
-    IMPORTED_LOCATION "${QBE_BUILD_DIR}/qbe"
+    IMPORTED_LOCATION "${QBE_EXECUTABLE}"
 )
 add_dependencies(qbe qbe_build)
 
@@ -64,7 +65,7 @@ add_subdirectory(tests)
 
 # qbe is an imported target, being built by its own Makefile, so the program it
 # leaves behind is installed as a file rather than as a target.
-install(PROGRAMS "${QBE_BUILD_DIR}/qbe"
+install(PROGRAMS "${QBE_EXECUTABLE}"
     DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
