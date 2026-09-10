@@ -119,7 +119,16 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (toolchain.run({ toolchain.qbe(), "-o", assemblyFile, irFile }) != 0) {
+    std::vector<std::string> qbeCommand = { toolchain.qbe() };
+#ifdef _WIN32
+    // qbe's own default target is the ELF sysv ABI even when built on Windows.
+    qbeCommand.push_back("-t");
+    qbeCommand.push_back("amd64_win");
+#endif
+    qbeCommand.push_back("-o");
+    qbeCommand.push_back(assemblyFile);
+    qbeCommand.push_back(irFile);
+    if (toolchain.run(qbeCommand) != 0) {
         if (!keepIntermediates) {
             std::remove(irFile.c_str());
         }

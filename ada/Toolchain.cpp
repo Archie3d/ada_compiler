@@ -4,8 +4,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
+#ifdef _WIN32
+#   include <process.h>
+#else
+#   include <sys/wait.h>
+#endif
 
 namespace
 {
@@ -80,10 +84,18 @@ std::string homeOf(const std::string& executablePath)
         return std::string();
     }
 
+#ifdef _WIN32
+    // MinGW has no realpath(); _fullpath() is the closest equivalent.
+    char resolved[_MAX_PATH];
+    if (_fullpath(resolved, found.c_str(), _MAX_PATH) != nullptr) {
+        found = resolved;
+    }
+#else
     char resolved[PATH_MAX];
     if (realpath(found.c_str(), resolved) != nullptr) {
         found = resolved;
     }
+#endif
     return directoryOf(found);
 }
 
@@ -190,6 +202,14 @@ int Toolchain::run(const std::vector<std::string>& command) const
     }
     arguments.push_back(nullptr);
 
+#ifdef _WIN32
+    intptr_t result = _spawnvp(_P_WAIT, arguments[0], arguments.data());
+    if (result == -1) {
+        std::cerr << "ada: error: cannot run '" << command.front() << "'\n";
+        return -1;
+    }
+    return static_cast<int>(result);
+#else
     pid_t child = fork();
     if (child < 0) {
         return -1;
@@ -208,4 +228,5 @@ int Toolchain::run(const std::vector<std::string>& command) const
         return WEXITSTATUS(status);
     }
     return -1;
+#endif
 }

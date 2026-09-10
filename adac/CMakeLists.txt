@@ -30,6 +30,8 @@ target_compile_definitions(${TARGET}
         ADA_LIBRARY_DEFAULT_PATH="${CMAKE_SOURCE_DIR}/runtime/ada:${CMAKE_INSTALL_FULL_LIBDIR}/ada/adainclude"
 )
 
+message(STATUS "${CMAKE_SOURCE_DIR}/runtime/ada:${CMAKE_INSTALL_FULL_LIBDIR}/ada/adainclude")
+
 install(TARGETS ${TARGET}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
