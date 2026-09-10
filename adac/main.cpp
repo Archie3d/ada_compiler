@@ -7,10 +7,22 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
+
+#ifdef _WIN32
+#   include <cstdlib>
+#else
+#   include <climits>
+#endif
 
 #ifndef ADA_LIBRARY_DEFAULT_PATH
 #define ADA_LIBRARY_DEFAULT_PATH ""
+#endif
+
+#ifndef ADA_INSTALL_LIBDIR
+#define ADA_INSTALL_LIBDIR "lib"
 #endif
 
 namespace
@@ -57,6 +69,80 @@ void addSeparatedPaths(UnitLoader& loader, const char* text)
     }
 }
 
+bool directoryExists(const std::string& path)
+{
+    struct stat information;
+    return !path.empty() && stat(path.c_str(), &information) == 0 && S_ISDIR(information.st_mode);
+}
+
+std::string directoryOf(const std::string& path)
+{
+    std::size_t slash = path.find_last_of("/\\");
+    if (slash == std::string::npos) {
+        return std::string();
+    }
+    return path.substr(0, slash);
+}
+
+// A name invoked without a slash was found on PATH, and that is the only clue
+// to where adac was installed.
+std::string alongPath(const std::string& name)
+{
+    const char* path = std::getenv("PATH");
+    if (path == nullptr) {
+        return std::string();
+    }
+    std::string list = path;
+    std::size_t start = 0;
+    while (start <= list.size()) {
+        std::size_t separator = list.find(':', start);
+        std::size_t end = separator == std::string::npos ? list.size() : separator;
+        std::string candidate = list.substr(start, end - start) + "/" + name;
+        if (access(candidate.c_str(), X_OK) == 0) {
+            return candidate;
+        }
+        if (separator == std::string::npos) {
+            break;
+        }
+        start = separator + 1;
+    }
+    return std::string();
+}
+
+// Symbolic links are followed, so a link on PATH pointing into an install
+// leads back to the install rather than to wherever the link happens to sit.
+std::string resolvedPath(const std::string& path)
+{
+#ifdef _WIN32
+    char resolved[_MAX_PATH];
+    if (_fullpath(resolved, path.c_str(), _MAX_PATH) != nullptr) {
+        return resolved;
+    }
+#else
+    char resolved[PATH_MAX];
+    if (realpath(path.c_str(), resolved) != nullptr) {
+        return resolved;
+    }
+#endif
+    return path;
+}
+
+// An install has bin/adac beside lib/ada/adainclude.  Run in place, in a
+// build tree or from an unrelated directory, adac has no such neighbour and
+// falls back to whatever ADA_LIBRARY_DEFAULT_PATH names instead.
+std::string libraryBesideExecutable(const std::string& executablePath)
+{
+    std::string found = executablePath.find_first_of("/\\") == std::string::npos
+        ? alongPath(executablePath)
+        : executablePath;
+    std::string directory = directoryOf(resolvedPath(found));
+    if (directory.empty()) {
+        return std::string();
+    }
+    std::string candidate = directory + "/../" ADA_INSTALL_LIBDIR "/ada/adainclude";
+    return directoryExists(candidate) ? candidate : std::string();
+}
+
 }
 
 int main(int argc, char** argv)
@@ -65,6 +151,7 @@ int main(int argc, char** argv)
     std::vector<std::string> includes;
     std::string output;
     std::string library = ADA_LIBRARY_DEFAULT_PATH;
+    bool librarySelected = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string argument = argv[i];
@@ -88,8 +175,10 @@ int main(int argc, char** argv)
                 return 2;
             }
             library = argv[++i];
+            librarySelected = true;
         } else if (argument == "--no-stdlib") {
             library.clear();
+            librarySelected = true;
         } else if (argument == "-h" || argument == "--help") {
             printUsage();
             return 0;
@@ -107,6 +196,16 @@ int main(int argc, char** argv)
     }
     if (output.empty()) {
         output = defaultOutputName(inputs.back());
+    }
+
+    // Neither --stdlib nor --no-stdlib was given, so adac is on its own: an
+    // installed adac looks beside itself before falling back to the path
+    // settled at build time.
+    if (!librarySelected) {
+        std::string beside = libraryBesideExecutable(argv[0]);
+        if (!beside.empty()) {
+            library = beside;
+        }
     }
 
     Diagnostics diagnostics;

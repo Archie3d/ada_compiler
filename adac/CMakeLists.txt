@@ -23,14 +23,16 @@ target_include_directories(${TARGET}
 )
 
 # Where the predefined environment lives when nothing on the command line and
-# nothing in ADA_INCLUDE_PATH says otherwise.  Both the source tree and the
-# place an install puts it are named, so adac run on its own works either way.
+# nothing in ADA_INCLUDE_PATH says otherwise.  The build tree location is
+# compiled in for convenience; an install is instead found at run time beside
+# adac's own executable, since a relocated install would leave a compiled-in
+# absolute path pointing nowhere.  The name of the library directory travels
+# too, since GNUInstallDirs may have settled on lib64.
 target_compile_definitions(${TARGET}
     PRIVATE
-        ADA_LIBRARY_DEFAULT_PATH="${CMAKE_SOURCE_DIR}/runtime/ada:${CMAKE_INSTALL_FULL_LIBDIR}/ada/adainclude"
+        ADA_LIBRARY_DEFAULT_PATH="${CMAKE_SOURCE_DIR}/runtime/ada"
+        ADA_INSTALL_LIBDIR="${CMAKE_INSTALL_LIBDIR}"
 )
-
-message(STATUS "${CMAKE_SOURCE_DIR}/runtime/ada:${CMAKE_INSTALL_FULL_LIBDIR}/ada/adainclude")
 
 install(TARGETS ${TARGET}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
