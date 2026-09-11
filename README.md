@@ -1,7 +1,15 @@
-# Ada 83 compiler
+# Ada compiler
 
-This project implements an Ada 83 compiler in C++. It uses QBE as a backend.
-The compiler takes Ada source code (`*.ada`, `*.ads`, `*.adb` files) and generates QBE intermediate language (IR) representation.
+This project implements an Ada 83/95 subset compiler in C++. It uses [QBE](https://c9x.me/compile/) as a backend.
+
+> This is an experimental project built with a help of AI.
+
+The compilation is performed in three stages:
+- Ada to QBE compiler frotend. This translates Ada source code to QBE intermediate language (IR).
+- QBE backend, which compiles IR to the target's assembly.
+- Target's assemly and linker combines the QBE's output with the language runtime to produce an executable.
+
+A compiler driver is provided. This executes all the steps of the compilation to go from Ada source code to an executable.
 
 ## Building
 
