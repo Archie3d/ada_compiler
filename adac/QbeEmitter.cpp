@@ -390,7 +390,10 @@ void QbeEmitter::finishFunction(const std::string& signature)
     if (!context.terminated) {
         if (context.symbol != nullptr && context.symbol->returnType != nullptr) {
             char type = qbeClass(context.symbol->returnType);
-            if (type == 's' || type == 'd') {
+            if (isComposite(context.symbol->returnType)) {
+                line("call $__ada_raise(w 2)");
+                line("ret");
+            } else if (type == 's' || type == 'd') {
                 std::string zero = newTemp();
                 line(zero + " =" + std::string(1, type) + " copy " + (type == 's' ? "s_0" : "d_0"));
                 line("ret " + zero);
@@ -407,7 +410,9 @@ void QbeEmitter::finishFunction(const std::string& signature)
         context.body << context.propagateLabel << "\n";
         if (context.symbol != nullptr && context.symbol->returnType != nullptr) {
             char type = qbeClass(context.symbol->returnType);
-            if (type == 's' || type == 'd') {
+            if (isComposite(context.symbol->returnType)) {
+                context.body << "    ret\n";
+            } else if (type == 's' || type == 'd') {
                 context.body << "    ret " << (type == 's' ? "s_0" : "d_0") << "\n";
             } else {
                 context.body << "    ret 0\n";
@@ -448,13 +453,17 @@ void QbeEmitter::emitSubprogram(SubprogramBody* body)
     m_context = &context;
 
     std::string signature = "function ";
-    if (symbol->returnType != nullptr) {
+    if (symbol->returnType != nullptr && !isComposite(symbol->returnType)) {
         signature += std::string(1, qbeClass(symbol->returnType)) + " ";
     }
     signature += symbol->qbeName + "(";
     bool first = true;
+    if (isComposite(symbol->returnType)) {
+        signature += "l %.result";
+        first = false;
+    }
     if (symbol->level > 0) {
-        signature += "l %.link";
+        signature += (first ? "" : ", ") + std::string("l %.link");
         first = false;
     }
     for (Symbol* parameter : symbol->parameters) {
@@ -863,7 +872,19 @@ void QbeEmitter::emitStatement(Stmt* statement)
 
     case StmtKind::Return: {
         auto* returnStatement = static_cast<ReturnStmt*>(statement);
-        if (returnStatement->value) {
+        Type* resultType = m_context->symbol == nullptr ? nullptr : m_context->symbol->returnType;
+        if (returnStatement->value && isComposite(resultType)) {
+            if (isUnconstrainedArray(resultType)) {
+                Value value = emitExpr(returnStatement->value.get());
+                value = withBounds(value, returnStatement->value->type, nullptr);
+                line("call $__ada_array_result(l %.result, l " + value.name + ", w " + value.first
+                     + ", w " + value.last + ", l " + std::to_string(typeSize(resultType->element)) + ")");
+                emitExceptionCheck();
+            } else {
+                assignInto(Value { "%.result", 'l' }, resultType, returnStatement->value.get());
+            }
+            line("ret");
+        } else if (returnStatement->value) {
             Value value = emitExpr(returnStatement->value.get());
             if (m_context->symbol != nullptr) {
                 emitRangeCheck(value, m_context->symbol->returnType, returnStatement->location);
@@ -1286,13 +1307,17 @@ Value QbeEmitter::lengthOf(const Value& array, Type* type)
         return constantValue(0, 'w');
     }
     if (isLiteralOperand(array.first) && isLiteralOperand(array.last)) {
-        return constantValue(std::stoll(array.last) - std::stoll(array.first) + 1, 'w');
+        return constantValue(std::max(0LL, std::stoll(array.last) - std::stoll(array.first) + 1), 'w');
     }
     std::string span = newTemp();
     line(span + " =w sub " + array.last + ", " + array.first);
     std::string length = newTemp();
     line(length + " =w add " + span + ", 1");
-    return Value { length, 'w' };
+    std::string nonNull = newTemp();
+    std::string normalized = newTemp();
+    line(nonNull + " =w csgew " + array.last + ", " + array.first);
+    line(normalized + " =w mul " + length + ", " + nonNull);
+    return Value { normalized, 'w' };
 }
 
 // ---------------------------------------------------------------------------
@@ -1931,6 +1956,13 @@ Value QbeEmitter::emitCall(CallExpr* expr)
     }
 
     std::vector<std::string> arguments;
+    bool compositeResult = isComposite(subprogram->returnType);
+    bool dynamicResult = isUnconstrainedArray(subprogram->returnType);
+    std::string resultStorage;
+    if (compositeResult) {
+        resultStorage = allocScratch(dynamicResult ? 24 : std::max(1LL, typeSize(subprogram->returnType)));
+        arguments.push_back("l " + resultStorage);
+    }
     if (subprogram->level > 0) {
         Value link = staticLinkFor(subprogram->level - 1);
         arguments.push_back("l " + link.name);
@@ -1966,7 +1998,7 @@ Value QbeEmitter::emitCall(CallExpr* expr)
     }
 
     Value result { "0", 'w' };
-    if (subprogram->returnType != nullptr) {
+    if (subprogram->returnType != nullptr && !compositeResult) {
         char type = qbeClass(subprogram->returnType);
         std::string temp = newTemp();
         line(temp + " =" + std::string(1, type) + " call " + subprogram->qbeName + "(" + argumentList + ")");
@@ -1976,6 +2008,32 @@ Value QbeEmitter::emitCall(CallExpr* expr)
     }
 
     emitExceptionCheck();
+    if (dynamicResult) {
+        // The callee transfers a heap copy. Move it immediately to this
+        // activation's stack, then release the transfer buffer before any
+        // further Ada expression can raise an exception.
+        std::string pointer = newTemp();
+        line(pointer + " =l loadl " + resultStorage);
+        std::string firstAddress = newTemp();
+        std::string lastAddress = newTemp();
+        std::string sizeAddress = newTemp();
+        line(firstAddress + " =l add " + resultStorage + ", 8");
+        line(lastAddress + " =l add " + resultStorage + ", 12");
+        line(sizeAddress + " =l add " + resultStorage + ", 16");
+        std::string first = newTemp();
+        std::string last = newTemp();
+        std::string size = newTemp();
+        line(first + " =w loadw " + firstAddress);
+        line(last + " =w loadw " + lastAddress);
+        line(size + " =l loadl " + sizeAddress);
+        std::string buffer = newTemp();
+        line(buffer + " =l alloc8 " + size);
+        line("call $memcpy(l " + buffer + ", l " + pointer + ", l " + size + ")");
+        line("call $__ada_deallocate(l " + pointer + ")");
+        result = Value { buffer, 'l', first, last };
+    } else if (compositeResult) {
+        result = withBounds(Value { resultStorage, 'l' }, subprogram->returnType, nullptr);
+    }
     return result;
 }
 
@@ -2718,6 +2776,10 @@ void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Ty
 
 Value QbeEmitter::emitAggregate(AggregateExpr* expr)
 {
+    if (isUnconstrainedArray(expr->type)) {
+        m_diagnostics.error(expr->location, "array aggregate requires a constrained subtype");
+        return Value { "0", 'l', "1", "0" };
+    }
     long long size = typeSize(expr->type);
     std::string buffer = allocScratch(size > 0 ? size : 1);
     emitAggregateInto(expr, Value { buffer, 'l' }, expr->type);

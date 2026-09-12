@@ -150,3 +150,6 @@ add_ada_test(parameterless SOURCES parameterless.adb)
 add_ada_error_test(parameterlesserrors SOURCES parameterlesserrors.adb)
 
 add_ada_error_test(defaulterrors SOURCES defaulterrors.adb)
+
+add_ada_test(compositereturns SOURCES compositereturns.adb)
+add_ada_error_test(returnerrors SOURCES returnerrors.adb)

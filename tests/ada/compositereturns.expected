@@ -1,0 +1,22 @@
+library function result
+independent array temporaries
+record initialization and recursion
+independent record temporaries
+record aggregate result
+composite default result
+record assignment
+constrained array initialization
+unconstrained array assignment and nesting
+returned array indexing
+returned string initialization with sliding
+returned bounds
+returned bounds
+returned bounds
+return concatenation and nested calls
+null array length
+null array bounds
+result length check
+failed result is not consumed
+constrained return length check
+failed array descriptor is not consumed
+missing return raises

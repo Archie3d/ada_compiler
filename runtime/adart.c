@@ -394,3 +394,39 @@ void __ada_unhandled(const char* name)
     fflush(stdout);
     fprintf(stderr, "\nraised %s\n", name == 0 ? "EXCEPTION" : name);
 }
+
+/* Internal Ada ABI: an unconstrained result carries a transfer buffer, its
+   original bounds, and the buffer size. The caller copies and frees it as
+   soon as the call succeeds; no pointer into the callee's stack escapes. */
+void __ada_array_result(void* descriptor, const void* source, int first, int last, int64_t elementSize)
+{
+    int64_t length = last < first ? 0 : (int64_t)last - (int64_t)first + 1;
+    int64_t size;
+    void* buffer;
+
+    if (elementSize < 0 || (elementSize != 0 && length > INT64_MAX / elementSize)) {
+        __ada_raise(ADA_STORAGE_ERROR);
+        return;
+    }
+    size = length * elementSize;
+    if ((uint64_t)size > SIZE_MAX) {
+        __ada_raise(ADA_STORAGE_ERROR);
+        return;
+    }
+    buffer = calloc(1, size == 0 ? 1 : (size_t)size);
+    if (buffer == NULL) {
+        __ada_raise(ADA_STORAGE_ERROR);
+        return;
+    }
+    if (size != 0) {
+        memcpy(buffer, source, (size_t)size);
+    }
+    memcpy(descriptor, &buffer, sizeof buffer);
+    memcpy((char*)descriptor + 8, &first, sizeof first);
+    memcpy((char*)descriptor + 12, &last, sizeof last);
+    /* alloc8 requires storage even for a null result. */
+    if (size == 0) {
+        size = 1;
+    }
+    memcpy((char*)descriptor + 16, &size, sizeof size);
+}

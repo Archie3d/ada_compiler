@@ -152,8 +152,21 @@ calls, with names bound in the declaration scope. Each parameter in a grouped
 profile gets its own default evaluation. Explicit arguments skip their defaults;
 default evaluation can raise an exception before the called body is entered.
 Only `in` parameters may have defaults, and the default must have a compatible
-type. Defaults use the same value conventions as explicit arguments; existing
-limitations on composite function results still apply.
+type. Defaults use the same value conventions as explicit arguments.
+
+Record and constrained-array function results use caller-provided storage.
+Unconstrained-array results preserve their bounds and are copied into the caller
+before use, including in nested calls, indexing, attributes, and constrained
+object initialization or assignment. Length mismatches raise `Constraint_Error`;
+null results preserve their bounds and have zero length. Composite functions
+that fall through without returning raise `Program_Error`.
+
+Variable-size result temporaries remain on the caller's stack until it exits,
+so repeated calls in long loops can accumulate stack storage. Unconstrained
+object declarations and inference of unconstrained aggregate bounds remain
+future work: use an explicitly constrained object or subtype for these cases.
+The new internal return convention requires rebuilding Ada code and using the
+matching runtime; imported C calls retain their existing convention.
 
 Floating point types are declared with `digits`, optionally with a range:
 

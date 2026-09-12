@@ -4,6 +4,8 @@
 #ifndef ADART_H
 #define ADART_H
 
+#include <stdint.h>
+
 /* Exception identifiers.  Sema registers the predefined exceptions in this
    order, so the run time can raise one of them by number and the handlers the
    compiler emitted will recognise it. */
@@ -39,6 +41,10 @@ void __ada_raise(int id);
    cannot be met, and freeing null does nothing. */
 void* __ada_allocate(long size);
 void __ada_deallocate(void* address);
+
+/* Internal unconstrained-array return descriptor: pointer, two 32-bit bounds,
+   and a 64-bit transfer size. The caller owns and releases the buffer. */
+void __ada_array_result(void* descriptor, const void* source, int first, int last, int64_t elementSize);
 
 /* Renders a real value the way Ada.Text_IO does.  Fore is the least number of
    characters before the point including the sign, Aft the number after it, and

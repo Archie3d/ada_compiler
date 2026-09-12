@@ -42,8 +42,8 @@ Primary code: `adac/Sema.cpp`, `adac/Scope.cpp`.
 - [x] Evaluate omitted defaults for supported Ada and imported call forms at each
   call, using declaration-scope bindings. Preserve grouped parameter defaults,
   captured environments, subtype checks, and exception propagation. Covered by
-  `defaultcalls.adb` and `defaulterrors.adb`; composite-result lifetime limitations
-  still apply when a default expression itself returns a composite value.
+  `defaultcalls.adb` and `defaulterrors.adb`; composite-valued defaults are also
+  covered by `compositereturns.adb`.
 - [ ] Add user-defined operator declarations and calls, including operator symbols
   such as `function "+" (...) return T`.
 - [ ] **Audit** visibility, `use` clauses, homographs, duplicate declarations, and
@@ -58,11 +58,19 @@ operator overloads; nested hiding and invalid specification/body pairs.
 
 Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`, `adac/Sema.cpp`.
 
-- [ ] Define ownership and lifetime of array/record results. Returning an address
-  into a callee's stack is insufficient; introduce a result convention with
-  caller-owned storage or another explicit lifetime strategy.
-- [ ] Return bounds alongside unconstrained array results. Support use of results
-  in initialization, assignment, indexing, and nested calls.
+- [x] Give array/record results caller-owned storage. Fixed-size results use a
+  hidden destination pointer. Unconstrained array results transfer a heap copy
+  plus bounds; the caller immediately copies to its stack and frees the transfer
+  buffer. Exceptions skip unfinished results. Covered by `compositereturns.adb`.
+- [x] Preserve bounds of unconstrained array results through constrained-object
+  initialization, assignment with sliding/length checks, indexing, attributes,
+  and nested calls, including null ranges. Covered by `compositereturns.adb`.
+- [ ] Reclaim variable-size expression temporaries before the caller exits;
+  repeated calls in loops currently accumulate caller stack storage. Include
+  normal and exceptional exits in the dynamic-array lifetime work.
+- [ ] Infer array aggregate bounds in unconstrained contexts. Until implemented,
+  use a constrained subtype or local object when returning an array aggregate;
+  unsupported direct returns are diagnosed (`returnerrors.adb`).
 - [x] Compare non-character arrays element by element, recursively for composite
   elements. Discrete-element array ordering is lexicographic; arrays of other
   element types support equality only. Covered by `arraycompare.adb` and
@@ -92,7 +100,8 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Sema.cpp`, `adac/UnitLoader.cpp`.
   actual object's subtype. The current implementation passes all writable
   parameters by reference. Treat composite parameter mechanisms separately.
 - [ ] Diagnose invalid function return usage and handle reaching a function's end
-  without a result. `finishFunction` currently supplies a zero return value.
+  without a result. Composite functions now raise `Program_Error` on fallthrough;
+  scalar functions still receive an implicit zero return value.
 - [ ] Implement bare `raise;` as re-raising the active exception, including after
   a nested handler. The current emitter substitutes `Constraint_Error` when no
   exception symbol is present.
@@ -271,6 +280,5 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: composite return lifetimes; exception/elaboration
-corrections; dynamic array descriptors; multidimensional arrays. Modular types
-can be developed as a separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: exception/elaboration corrections; dynamic array
+descriptors; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.
