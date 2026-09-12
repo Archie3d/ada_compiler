@@ -6,6 +6,7 @@
 #include "Type.h"
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class Sema
@@ -127,6 +128,7 @@ private:
     std::vector<LoopStmt*> m_loops;
     std::vector<std::string> m_namePrefix;
     std::vector<GenericInstantiationDecl*> m_libraryInstances;
+    std::unordered_map<std::string, std::size_t> m_subprogramNames;
     int m_anonymousCounter = 0;
     int m_exceptionCounter = 1;
     int m_instantiationDepth = 0;

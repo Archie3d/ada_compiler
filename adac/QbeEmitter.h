@@ -88,6 +88,7 @@ private:
     Value emitCall(CallExpr* expr);
     Value emitRuntimeCall(CallExpr* expr, Symbol* subprogram);
     Value emitBinary(BinaryExpr* expr);
+    Value emitIntegerOperation(int operation, const Value& left, const Value& right, char type);
     Value emitUnary(UnaryExpr* expr);
     Value emitAttribute(AttributeExpr* expr);
     Value emitStreamAttribute(AttributeExpr* expr);

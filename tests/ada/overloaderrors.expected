@@ -1,0 +1,4 @@
+overloaderrors.adb:15:10: error: ambiguous subprogram call
+overloaderrors.adb:16:24: error: a parameter cannot be supplied more than once
+overloaderrors.adb:17:19: error: a positional argument cannot follow a named argument
+overloaderrors.adb:18:10: error: no visible subprogram matches this call

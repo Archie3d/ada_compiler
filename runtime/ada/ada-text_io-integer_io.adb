@@ -7,7 +7,7 @@ package body Ada.Text_IO.Integer_IO is
     -- Room for the widest thing Put can produce: a sign, a base written as two
     -- digits, the two marks around the number, and the number itself in base
     -- two.
-    Text_Length : constant := 40;
+    Text_Length : constant := 72;
 
     -- Item spelled out in the given base, right justified in Text and without
     -- any padding.  First says where it starts.  Ada writes a number in a base
@@ -16,7 +16,7 @@ package body Ada.Text_IO.Integer_IO is
                         Base  : in Number_Base;
                         Text  : out String;
                         First : out Natural) is
-        Left     : Integer := Integer (Item);
+        Left     : Long_Integer := Long_Integer (Item);
         Digit    : Integer;
         Position : Natural := Text_Length + 1;
     begin
@@ -34,8 +34,8 @@ package body Ada.Text_IO.Integer_IO is
         -- dropped afterwards, since the most negative value of a type has no
         -- positive counterpart to negate it into.
         while Left /= 0 loop
-            Digit := abs (Left rem Base);
-            Left := Left / Base;
+            Digit := Integer (abs (Left rem Long_Integer (Base)));
+            Left := Left / Long_Integer (Base);
             Position := Position - 1;
             Text (Position) := Digit_Set (Digit + 1);
         end loop;
@@ -92,10 +92,10 @@ package body Ada.Text_IO.Integer_IO is
     -- Constraint_Error, which is why the range is tested here rather than left
     -- to the assignment below it.
     procedure Store (Word : in String; Item : out Num) is
-        Value : Integer;
+        Value : Long_Integer;
     begin
-        Value := Integer'Value (Word);
-        if Value < Integer (Num'First) or else Value > Integer (Num'Last) then
+        Value := Long_Integer'Value (Word);
+        if Value < Long_Integer (Num'First) or else Value > Long_Integer (Num'Last) then
             raise Data_Error;
         end if;
         Item := Num (Value);

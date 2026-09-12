@@ -1,0 +1,5 @@
+-123
+caught narrowing
+caught real conversion
+ 4294967296
+caught huge real conversion

@@ -113,3 +113,30 @@ add_ada_error_test(privateerrors SOURCES privateerrors.adb)
 add_ada_error_test(varianterrors SOURCES varianterrors.adb)
 
 add_ada_ir_test(hello SOURCES hello.adb)
+
+add_ada_test(overflow32 SOURCES overflow32.adb)
+
+add_ada_test(overflow64 SOURCES overflow64.adb)
+
+add_ada_test(integerwidth SOURCES integerwidth.adb)
+
+add_ada_test(integerdivision SOURCES integerdivision.adb)
+
+add_ada_test(integerconversions SOURCES integerconversions.adb)
+
+add_ada_test(integerloops SOURCES integerloops.adb)
+
+add_ada_test(integerstatic SOURCES integerstatic.adb)
+
+add_ada_test(longintegerio SOURCES longintegerio.adb)
+
+add_ada_test(overloads SOURCES overloads.adb)
+
+add_ada_error_test(overloaderrors SOURCES overloaderrors.adb)
+
+add_test(NAME harness.exit_status
+    COMMAND ${CMAKE_COMMAND}
+        -DADA=$<TARGET_FILE:ada>
+        -DWORKDIR=${ADA_TEST_WORK_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/CheckExitStatus.cmake
+)

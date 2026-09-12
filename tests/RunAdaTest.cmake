@@ -31,6 +31,10 @@ execute_process(
     ERROR_VARIABLE errors
 )
 
+if(NOT status STREQUAL "0")
+    message(FATAL_ERROR "${NAME} exited with ${status}:\n${actual}${errors}")
+endif()
+
 file(READ "${EXPECTED}" expected)
 if(NOT actual STREQUAL expected)
     message(FATAL_ERROR "output mismatch for ${NAME}\n--- expected ---\n${expected}\n--- actual ---\n${actual}")

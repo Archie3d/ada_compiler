@@ -49,12 +49,17 @@ void __ada_format_float(char* buffer, int size, double value, int fore, int aft,
 /* 'Image, whose enumeration form needs the literal names the emitter records
    for the type. */
 const char* __ada_image_integer(int value);
+const char* __ada_image_long_integer(long long value);
 const char* __ada_image_enum(int value, const char** names, int count);
 const char* __ada_image_character(int value);
 
 /* 'Value, which reads back what 'Image wrote.  Surrounding blanks are ignored,
    and anything else raises Constraint_Error. */
 int __ada_value_integer(const char* text, int length, int low, int high);
+long long __ada_value_long_integer(const char* text, int length, long long low, long long high);
+
+/* Checked signed arithmetic: add, subtract, multiply, divide, rem, mod, power. */
+long long __ada_integer_operation(int operation, int bits, long long left, long long right);
 int __ada_value_enum(const char* text, int length, const char** names, int count);
 int __ada_value_character(const char* text, int length);
 

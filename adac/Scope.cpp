@@ -31,12 +31,31 @@ bool isOverloadable(const Symbol* symbol)
     return symbol->kind == SymbolKind::Subprogram || symbol->kind == SymbolKind::EnumerationLiteral;
 }
 
+bool sameProfile(const Symbol* left, const Symbol* right)
+{
+    if (left->kind != right->kind) {
+        return false;
+    }
+    if (left->kind == SymbolKind::EnumerationLiteral) {
+        return rootType(left->type) == rootType(right->type);
+    }
+    if (left->kind != SymbolKind::Subprogram || left->parameters.size() != right->parameters.size()
+        || rootType(left->returnType) != rootType(right->returnType)) {
+        return false;
+    }
+    for (std::size_t i = 0; i < left->parameters.size(); ++i) {
+        if (rootType(left->parameters[i]->type) != rootType(right->parameters[i]->type)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 // A name that cannot be overloaded is hidden by the innermost declaration of
-// it, but subprograms and enumeration literals gather from every enclosing
-// scope at once: that is what lets a Put on one instance of Integer_IO be
-// called where another instance is also in use.
+// it. Overloadable names gather distinct profiles from enclosing scopes;
+// an inner declaration hides an outer declaration of the same profile.
 std::vector<Symbol*> Scope::lookup(const std::string& name) const
 {
     std::vector<Symbol*> candidates;
@@ -53,7 +72,18 @@ std::vector<Symbol*> Scope::lookup(const std::string& name) const
         }
 
         bool hides = false;
+        std::size_t innerCount = candidates.size();
         for (Symbol* symbol : level) {
+            bool hidden = false;
+            for (std::size_t i = 0; i < innerCount; ++i) {
+                if (sameProfile(candidates[i], symbol)) {
+                    hidden = true;
+                    break;
+                }
+            }
+            if (hidden) {
+                continue;
+            }
             if (!isOverloadable(symbol)) {
                 hides = true;
             }

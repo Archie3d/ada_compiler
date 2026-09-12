@@ -5,6 +5,7 @@
 #include "adaio.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -124,43 +125,120 @@ static void trim(const char* text, int length, int* from, int* to)
     *to = stop;
 }
 
-int __ada_value_integer(const char* text, int length, int low, int high)
+long long __ada_value_long_integer(const char* text, int length, long long low, long long high)
 {
     int start;
     int stop;
-    int sign = 1;
-    long value = 0;
-    int digits = 0;
+    int negative = 0;
+    unsigned long long value = 0;
+    unsigned long long limit;
+    long long result;
     int i;
 
     trim(text, length, &start, &stop);
     if (start < stop && (text[start] == '+' || text[start] == '-')) {
-        sign = text[start] == '-' ? -1 : 1;
+        negative = text[start] == '-';
         ++start;
     }
+    limit = (unsigned long long)LLONG_MAX + negative;
+    if (start == stop) {
+        __ada_raise(ADA_CONSTRAINT_ERROR);
+        return low;
+    }
     for (i = start; i < stop; ++i) {
-        if (!isdigit((unsigned char)text[i])) {
+        unsigned digit = (unsigned)(text[i] - '0');
+        if (digit > 9 || value > (limit - digit) / 10) {
             __ada_raise(ADA_CONSTRAINT_ERROR);
             return low;
         }
-        value = value * 10 + (text[i] - '0');
-        ++digits;
-        if (value > 2147483647L) {
-            __ada_raise(ADA_CONSTRAINT_ERROR);
-            return low;
-        }
+        value = value * 10 + digit;
     }
-    if (digits == 0) {
+    result = negative ? (value == (unsigned long long)LLONG_MAX + 1 ? LLONG_MIN : -(long long)value)
+                      : (long long)value;
+    if (result < low || result > high) {
         __ada_raise(ADA_CONSTRAINT_ERROR);
         return low;
     }
+    return result;
+}
 
-    value *= sign;
-    if (value < (long)low || value > (long)high) {
-        __ada_raise(ADA_CONSTRAINT_ERROR);
-        return low;
+int __ada_value_integer(const char* text, int length, int low, int high)
+{
+    return (int)__ada_value_long_integer(text, length, low, high);
+}
+
+const char* __ada_image_long_integer(long long value)
+{
+    static char buffers[IMAGE_BUFFERS][IMAGE_BUFFER_SIZE];
+    static int next = 0;
+    char* buffer = buffers[next];
+    next = (next + 1) % IMAGE_BUFFERS;
+    snprintf(buffer, IMAGE_BUFFER_SIZE, value < 0 ? "%lld" : " %lld", value);
+    return buffer;
+}
+
+long long __ada_integer_operation(int operation, int bits, long long left, long long right)
+{
+    long long result = 0;
+    long long low = bits == 32 ? INT_MIN : LLONG_MIN;
+    long long high = bits == 32 ? INT_MAX : LLONG_MAX;
+    int overflow = 0;
+
+    switch (operation) {
+    case 0:
+        overflow = __builtin_add_overflow(left, right, &result);
+        break;
+    case 1:
+        overflow = __builtin_sub_overflow(left, right, &result);
+        break;
+    case 2:
+        overflow = __builtin_mul_overflow(left, right, &result);
+        break;
+    case 3:
+    case 4:
+    case 5:
+        if (right == 0) {
+            overflow = 1;
+        } else if (left == LLONG_MIN && right == -1) {
+            overflow = operation == 3;
+        } else if (operation == 3) {
+            result = left / right;
+        } else {
+            result = left % right;
+            if (operation == 5 && result != 0 && (result < 0) != (right < 0)) {
+                result += right;
+            }
+        }
+        break;
+    case 6:
+        if (right < 0) {
+            overflow = 1;
+            break;
+        }
+        result = 1;
+        while (right != 0) {
+            if ((right & 1) && (__builtin_mul_overflow(result, left, &result)
+                               || result < low || result > high)) {
+                overflow = 1;
+                break;
+            }
+            right >>= 1;
+            if (right != 0 && (__builtin_mul_overflow(left, left, &left)
+                              || left < low || left > high)) {
+                overflow = 1;
+                break;
+            }
+        }
+        break;
+    default:
+        overflow = 1;
+        break;
     }
-    return (int)value;
+    if (overflow || result < low || result > high) {
+        __ada_raise(ADA_CONSTRAINT_ERROR);
+        return 0;
+    }
+    return result;
 }
 
 /* An enumeration literal is named without regard to case, which is why the
@@ -293,10 +371,22 @@ const char* __ada_image_float(double value, int aft, int exponent)
    would drop the fraction. */
 long long __ada_round_to_integer(double value)
 {
-    if (value < 0.0) {
-        return -(long long)(-value + 0.5);
+    long long result;
+    double fraction;
+    /* The upper endpoint is exclusive: LLONG_MAX rounds to 2**63 as a double.
+       This comparison also rejects NaNs before the C floating-to-integer cast. */
+    if (!(value >= -9223372036854775808.0 && value < 9223372036854775808.0)) {
+        __ada_raise(ADA_CONSTRAINT_ERROR);
+        return 0;
     }
-    return (long long)(value + 0.5);
+    result = (long long)value;
+    fraction = value - (double)result;
+    if (fraction >= 0.5) {
+        ++result;
+    } else if (fraction <= -0.5) {
+        --result;
+    }
+    return result;
 }
 
 void __ada_unhandled(const char* name)

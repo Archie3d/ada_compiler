@@ -126,6 +126,24 @@ Integer types declared with `type T is range L .. H` and their subtypes are
 checked wherever a value crosses into them: on assignment, on initialisation,
 on argument passing, on conversion and on a returned result.
 
+`Integer` uses 32-bit signed storage and `Long_Integer` uses 64-bit signed
+storage. User-defined integer ranges exceeding 32 bits also use 64 bits;
+subtypes preserve their parent's storage width. Integer arithmetic checks
+addition, subtraction, multiplication, division, negation, `abs`, and `**`
+for machine-range overflow. Division, `rem`, and `mod` check zero divisors.
+These failures raise `Constraint_Error`, as do out-of-range numeric conversions.
+The checked operations currently call C runtime helpers, which adds call overhead.
+
+`Long_Integer` is supported by `'Image`, `'Value`, generic `Integer_IO`, and
+`for` loops. A loop tests its final value before incrementing or decrementing,
+so a loop ending at a machine limit does not wrap around.
+
+Calls with argument lists use the expected result type when selecting an
+overload, and report ambiguity when several profiles remain. Shared formal
+types provide context for nested calls. Named arguments cannot be repeated or
+followed by positional arguments. Full resolution of mutually overloaded
+nested expressions remains future work.
+
 Floating point types are declared with `digits`, optionally with a range:
 
 ```ada

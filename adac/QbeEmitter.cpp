@@ -800,23 +800,29 @@ void QbeEmitter::emitStatement(Stmt* statement)
 
             Value low = emitExpr(loop->rangeLow.get());
             Value high = emitExpr(loop->rangeHigh.get());
-            std::string boundSlot = allocScratch(4);
             char type = qbeClass(variable->type);
+            std::string boundSlot = allocScratch(type == 'l' ? 8 : 4);
             Value address = addressOf(variable);
             storeInto(address, loop->isReverse ? high : low, variable->type);
-            line("storew " + (loop->isReverse ? low.name : high.name) + ", " + boundSlot);
+            line(std::string(type == 'l' ? "storel " : "storew ")
+                 + (loop->isReverse ? low.name : high.name) + ", " + boundSlot);
 
             label(head);
             Value current = loadFrom(addressOf(variable), variable->type);
             std::string bound = newTemp();
-            line(bound + " =w loadsw " + boundSlot);
+            line(bound + " =" + std::string(1, type) + (type == 'l' ? " loadl " : " loadsw ") + boundSlot);
             std::string test = newTemp();
-            line(test + " =w " + std::string(loop->isReverse ? "csgew" : "cslew") + " " + current.name + ", "
-                 + bound);
+            line(test + " =w " + comparisonInstruction(loop->isReverse ? BinaryOp::GreaterEqual : BinaryOp::LessEqual, type)
+                 + " " + current.name + ", " + bound);
             branch(Value { test, 'w' }, bodyLabel, exit);
             label(bodyLabel);
             emitStatements(loop->body);
             Value step = loadFrom(addressOf(variable), variable->type);
+            std::string lastIteration = newTemp();
+            line(lastIteration + " =w " + comparisonInstruction(BinaryOp::Equal, type) + " " + step.name + ", " + bound);
+            std::string advance = newLabel("loopstep");
+            branch(Value { lastIteration, 'w' }, exit, advance);
+            label(advance);
             std::string updated = newTemp();
             line(updated + " =" + std::string(1, type) + " " + (loop->isReverse ? "sub " : "add ") + step.name
                  + ", 1");
@@ -1108,17 +1114,6 @@ void QbeEmitter::emitRangeCheck(const Value& value, Type* type, const SourceLoca
     if (type == nullptr || !isDiscrete(type)) {
         return;
     }
-    bool narrowedInteger = type->kind == TypeKind::Integer
-                           && (type->low > std::numeric_limits<int>::min()
-                               || type->high < std::numeric_limits<int>::max());
-    if (!type->isSubtype && !narrowedInteger) {
-        return;
-    }
-    Type* parent = baseType(type);
-    if (parent != nullptr && type->low <= parent->low && type->high >= parent->high && !narrowedInteger) {
-        return;
-    }
-
     char type_ = value.type;
     std::string lowTest = newTemp();
     std::string highTest = newTemp();
@@ -1489,6 +1484,12 @@ Value QbeEmitter::emitExpr(Expr* expr)
     }
 
     if (expr->isStatic && isDiscrete(baseType(expr->type))) {
+        // Check before narrowing the literal to a QBE word. Subtype bounds
+        // are checked at value boundaries, not on intermediate expressions.
+        if (qbeClass(expr->type) == 'w'
+            && (expr->staticValue < -2147483648LL || expr->staticValue > 2147483647LL)) {
+            raiseConstraintError();
+        }
         return constantValue(expr->staticValue, qbeClass(expr->type));
     }
     if (expr->isStatic && isReal(expr->type)) {
@@ -1602,6 +1603,8 @@ Value QbeEmitter::emitExpr(Expr* expr)
                 }
                 std::string rounded = newTemp();
                 line(rounded + " =l call $__ada_round_to_integer(d " + wide + ")");
+                emitExceptionCheck();
+                emitRangeCheck(Value { rounded, 'l' }, expr->type, expr->location);
                 line(temp + " =" + std::string(1, to) + " copy " + rounded);
             } else {
                 std::string instruction;
@@ -1614,6 +1617,7 @@ Value QbeEmitter::emitExpr(Expr* expr)
                 } else if (from == 'w' && to == 'l') {
                     instruction = "extsw";
                 } else {
+                    emitRangeCheck(value, expr->type, expr->location);
                     instruction = "copy";
                 }
                 line(temp + " =" + std::string(1, to) + " " + instruction + " " + value.name);
@@ -2113,6 +2117,30 @@ Value QbeEmitter::emitConcatenation(BinaryExpr* expr)
     return Value { buffer, 'l', "1", total };
 }
 
+Value QbeEmitter::emitIntegerOperation(int operation, const Value& left, const Value& right, char type)
+{
+    auto widen = [&](const Value& value) {
+        if (value.type == 'l') {
+            return value.name;
+        }
+        std::string wide = newTemp();
+        line(wide + " =l extsw " + value.name);
+        return wide;
+    };
+    std::string leftWide = widen(left);
+    std::string rightWide = widen(right);
+    std::string result = newTemp();
+    line(result + " =l call $__ada_integer_operation(w " + std::to_string(operation) + ", w "
+         + (type == 'l' ? "64" : "32") + ", l " + leftWide + ", l " + rightWide + ")");
+    emitExceptionCheck();
+    if (type == 'w') {
+        std::string narrowed = newTemp();
+        line(narrowed + " =w copy " + result);
+        result = narrowed;
+    }
+    return Value { result, type };
+}
+
 Value QbeEmitter::emitBinary(BinaryExpr* expr)
 {
     switch (expr->op) {
@@ -2132,6 +2160,23 @@ Value QbeEmitter::emitBinary(BinaryExpr* expr)
         type = left.type;
     } else if (isFloatClass(right.type)) {
         type = right.type;
+    }
+
+    if (!isFloatClass(type)) {
+        int operation = -1;
+        switch (expr->op) {
+        case BinaryOp::Add: operation = 0; break;
+        case BinaryOp::Subtract: operation = 1; break;
+        case BinaryOp::Multiply: operation = 2; break;
+        case BinaryOp::Divide: operation = 3; break;
+        case BinaryOp::Remainder: operation = 4; break;
+        case BinaryOp::Modulo: operation = 5; break;
+        case BinaryOp::Power: operation = 6; break;
+        default: break;
+        }
+        if (operation >= 0) {
+            return emitIntegerOperation(operation, left, right, left.type);
+        }
     }
 
     switch (expr->op) {
@@ -2211,6 +2256,9 @@ Value QbeEmitter::emitUnary(UnaryExpr* expr)
     case UnaryOp::Plus:
         return operand;
     case UnaryOp::Negate: {
+        if (!isFloatClass(operand.type)) {
+            return emitIntegerOperation(1, Value { "0", operand.type }, operand, operand.type);
+        }
         std::string zero = isFloatClass(operand.type) ? realLiteral(0.0, operand.type) : std::string("0");
         line(temp + " =" + std::string(1, operand.type) + " sub " + zero + ", " + operand.name);
         return Value { temp, operand.type };
@@ -2236,7 +2284,11 @@ Value QbeEmitter::emitUnary(UnaryExpr* expr)
         branch(Value { negative, 'w' }, negate, done);
         label(negate);
         std::string negated = newTemp();
-        line(negated + " =" + std::string(1, operand.type) + " sub " + zero + ", " + operand.name);
+        if (isFloat) {
+            line(negated + " =" + std::string(1, operand.type) + " sub " + zero + ", " + operand.name);
+        } else {
+            negated = emitIntegerOperation(1, Value { "0", operand.type }, operand, operand.type).name;
+        }
         line(std::string(storeInstruction) + " " + negated + ", " + slot);
         jump(done);
         label(done);
@@ -2343,14 +2395,22 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
     if (name == "val") {
         Value value = emitExpr(expr->arguments.front().get());
         emitRangeCheck(value, prefixType, expr->location);
+        char type = qbeClass(prefixType);
+        if (value.type != type) {
+            std::string converted = newTemp();
+            line(converted + " =" + std::string(1, type)
+                 + (type == 'l' ? " extsw " : " copy ") + value.name);
+            return Value { converted, type };
+        }
         return value;
     }
     if (name == "succ" || name == "pred") {
         Value value = emitExpr(expr->arguments.front().get());
-        std::string temp = newTemp();
-        line(temp + " =" + std::string(1, value.type) + " " + (name == "succ" ? "add " : "sub ") + value.name
-             + ", 1");
-        return Value { temp, value.type };
+        Value result = emitIntegerOperation(name == "succ" ? 0 : 1, value, Value { "1", value.type }, value.type);
+        if (prefixType->kind == TypeKind::Enumeration) {
+            emitRangeCheck(result, baseType(prefixType), expr->location);
+        }
+        return result;
     }
     if (name == "image") {
         Value value = emitExpr(expr->arguments.front().get());
@@ -2368,7 +2428,8 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
             // Character, whose image is the literal in its quotes.
             line(temp + " =l call $__ada_image_character(w " + value.name + ")");
         } else {
-            line(temp + " =l call $__ada_image_integer(w " + value.name + ")");
+            line(temp + " =l call $" + (value.type == 'l' ? "__ada_image_long_integer(l " : "__ada_image_integer(w ")
+                 + value.name + ")");
         }
         std::string size = newTemp();
         line(size + " =l call $strlen(l " + temp + ")");
@@ -2394,12 +2455,15 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
         } else if (base != nullptr && base->kind == TypeKind::Enumeration) {
             // Character, whose values are named by their spelling.
             line(temp + " =w call $__ada_value_character(l " + text.name + ", w " + length.name + ")");
+        } else if (qbeClass(prefixType) == 'l') {
+            line(temp + " =l call $__ada_value_long_integer(l " + text.name + ", w " + length.name + ", l "
+                 + std::to_string(prefixType->low) + ", l " + std::to_string(prefixType->high) + ")");
         } else {
             line(temp + " =w call $__ada_value_integer(l " + text.name + ", w " + length.name + ", w "
                  + std::to_string(prefixType->low) + ", w " + std::to_string(prefixType->high) + ")");
         }
         emitExceptionCheck();
-        return Value { temp, 'w' };
+        return Value { temp, qbeClass(prefixType) };
     }
     if (name == "first" || name == "last" || name == "length") {
         Type* base = prefixType;

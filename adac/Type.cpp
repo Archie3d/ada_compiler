@@ -97,7 +97,8 @@ long long typeSize(const Type* type)
     case TypeKind::UniversalReal:
         return 8;
     case TypeKind::Integer:
-        return 4;
+        return type->base != nullptr ? typeSize(type->base)
+            : (type->low < -2147483648LL || type->high > 2147483647LL ? 8 : 4);
     case TypeKind::Enumeration:
         return type->literals.size() > 256 ? 4 : 1;
     case TypeKind::Float:
@@ -176,6 +177,8 @@ char qbeClass(const Type* type)
         return typeSize(type) == 8 ? 'd' : 's';
     case TypeKind::UniversalReal:
         return 'd';
+    case TypeKind::Integer:
+        return typeSize(type) == 8 ? 'l' : 'w';
     case TypeKind::UniversalInteger:
     case TypeKind::Access:
     case TypeKind::Array:
@@ -190,9 +193,9 @@ const char* qbeLoadInstruction(const Type* type)
 {
     switch (typeSize(type)) {
     case 1:
-        return "loadub";
+        return type->kind == TypeKind::Integer && type->low < 0 ? "loadsb" : "loadub";
     case 2:
-        return "loaduh";
+        return type->kind == TypeKind::Integer && type->low < 0 ? "loadsh" : "loaduh";
     case 8:
         if (isReal(type)) {
             return "loadd";
@@ -283,6 +286,8 @@ Type* TypeTable::makeSubtype(const std::string& name, Type* parent, long long lo
     subtype->isSubtype = true;
     subtype->low = low;
     subtype->high = high;
+    subtype->byteSize = parent->kind == TypeKind::Integer ? typeSize(parent) : parent->byteSize;
+    subtype->needsZeroInit = parent->needsZeroInit;
     subtype->literals = parent->literals;
     subtype->digits = parent->digits;
     subtype->hasRealRange = parent->hasRealRange;

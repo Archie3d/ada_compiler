@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
+#include <limits>
 
 namespace
 {
@@ -174,13 +175,10 @@ long long widthOf(const Type* type)
         return static_cast<long long>(longest);
     }
 
-    long long magnitude = std::max(type->high, type->low < 0 ? -type->low : type->low);
-    long long digits = 1;
-    while (magnitude >= 10) {
-        magnitude /= 10;
-        ++digits;
-    }
-    return digits + 1;
+    auto imageWidth = [](long long value) {
+        return static_cast<long long>(std::to_string(value).size()) + (value >= 0 ? 1 : 0);
+    };
+    return std::max(imageWidth(type->low), imageWidth(type->high));
 }
 
 // A subtype is declared without repeating the digits of the type it comes from.
@@ -961,9 +959,10 @@ Symbol* Sema::declareSubprogram(SubprogramSpec& spec, Scope* scope, bool isBody)
             if (candidate->parameters.size() != parameterTypes.size()) {
                 continue;
             }
-            bool matches = true;
+            bool matches = rootType(candidate->returnType) == rootType(returnType);
             for (std::size_t i = 0; i < parameterTypes.size(); ++i) {
-                if (rootType(candidate->parameters[i]->type) != rootType(parameterTypes[i])) {
+                if (rootType(candidate->parameters[i]->type) != rootType(parameterTypes[i])
+                    || candidate->parameters[i]->mode != spec.parameters[i].mode) {
                     matches = false;
                     break;
                 }
@@ -989,17 +988,13 @@ Symbol* Sema::declareSubprogram(SubprogramSpec& spec, Scope* scope, bool isBody)
     symbol->level = m_currentSubprogram != nullptr ? m_currentSubprogram->level + 1 : 0;
     symbol->owner = m_currentSubprogram;
 
-    // Overloads share a name in Ada but cannot share one in the emitted code,
-    // so everything after the first declaration is numbered.
-    std::size_t overloads = 0;
-    for (Symbol* candidate : scope->lookupLocal(spec.lower)) {
-        if (candidate->kind == SymbolKind::Subprogram) {
-            ++overloads;
-        }
-    }
-    symbol->qbeName = "$" + mangle(spec.lower);
-    if (overloads > 0) {
-        symbol->qbeName += "__" + std::to_string(overloads + 1);
+    // Block scopes can also declare the same spelling. Reserve emitted names
+    // across the compilation, so shadowing never creates duplicate QBE symbols.
+    std::string name = "$" + mangle(spec.lower);
+    std::size_t ordinal = ++m_subprogramNames[name];
+    symbol->qbeName = name;
+    if (ordinal > 1) {
+        symbol->qbeName += "__" + std::to_string(ordinal);
     }
 
     for (std::size_t i = 0; i < spec.parameters.size(); ++i) {
@@ -2299,14 +2294,82 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
         return expr->type;
     }
 
+    // Reject malformed associations before selecting a profile. In particular,
+    // a repeated name must not overwrite an earlier actual argument.
+    bool sawNamed = false;
+    std::vector<std::string> names;
     for (const Association& association : expr->arguments) {
+        if (association.nameLower.empty()) {
+            if (sawNamed) {
+                m_diagnostics.error(association.value->location, "a positional argument cannot follow a named argument");
+                return nullptr;
+            }
+        } else {
+            sawNamed = true;
+            if (std::find(names.begin(), names.end(), association.nameLower) != names.end()) {
+                m_diagnostics.error(association.value->location, "a parameter cannot be supplied more than once");
+                return nullptr;
+            }
+            names.push_back(association.nameLower);
+        }
+    }
+
+    // Result context can eliminate profiles before their arguments are resolved.
+    bool hasSubprograms = std::any_of(candidates.begin(), candidates.end(), [](Symbol* candidate) {
+        return candidate->kind == SymbolKind::Subprogram;
+    });
+    if (expected != nullptr && hasSubprograms) {
+        std::erase_if(candidates, [&](Symbol* candidate) {
+            return candidate->kind == SymbolKind::Subprogram
+                && (candidate->returnType == nullptr || !typesCompatible(expected, candidate->returnType));
+        });
+        if (candidates.empty() && (expr->callee->kind == ExprKind::Identifier
+                                  || expr->callee->kind == ExprKind::Selected)) {
+            m_diagnostics.error(expr->location, "no visible subprogram matches this call");
+            return nullptr;
+        }
+    }
+
+    for (std::size_t argumentIndex = 0; argumentIndex < expr->arguments.size(); ++argumentIndex) {
+        const Association& association = expr->arguments[argumentIndex];
         // An aggregate only means something once the parameter it fills is
         // known, so it waits until the profile has been chosen.
         if (association.value->kind == ExprKind::Aggregate) {
             continue;
         }
         if (association.value->type == nullptr) {
-            analyzeExpr(association.value.get(), scope, nullptr);
+            // A shared formal type provides context to nested calls without
+            // prematurely choosing between otherwise distinct overloads.
+            Type* context = nullptr;
+            bool differs = false;
+            for (Symbol* candidate : candidates) {
+                if (candidate->kind != SymbolKind::Subprogram) {
+                    continue;
+                }
+                Symbol* parameter = nullptr;
+                if (association.nameLower.empty()) {
+                    if (argumentIndex < candidate->parameters.size()) {
+                        parameter = candidate->parameters[argumentIndex];
+                    }
+                } else {
+                    for (Symbol* formal : candidate->parameters) {
+                        if (formal->name == association.nameLower) {
+                            parameter = formal;
+                            break;
+                        }
+                    }
+                }
+                if (parameter != nullptr) {
+                    if (context != nullptr && rootType(context) != rootType(parameter->type)) {
+                        differs = true;
+                    }
+                    context = parameter->type;
+                }
+            }
+            ExprKind kind = association.value->kind;
+            bool needsContext = kind == ExprKind::Call || kind == ExprKind::Identifier
+                || kind == ExprKind::Selected || kind == ExprKind::Allocator || kind == ExprKind::Null;
+            analyzeExpr(association.value.get(), scope, differs || !needsContext ? nullptr : context);
         }
     }
 
@@ -2375,6 +2438,10 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
                     matches = false;
                     break;
                 }
+                if (filled[index]) {
+                    matches = false;
+                    break;
+                }
                 filled[index] = true;
             }
             // Whatever the caller left out has to have a default of its own.
@@ -2384,8 +2451,11 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
                 }
             }
             if (matches) {
+                if (chosen != nullptr) {
+                    m_diagnostics.error(expr->location, "ambiguous subprogram call");
+                    return nullptr;
+                }
                 chosen = candidate;
-                break;
             }
         }
 
@@ -2409,7 +2479,8 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
             }
             Expr* argument = expr->arguments[i].value.get();
             adaptUniversal(argument, chosen->parameters[index]->type);
-            if (argument->kind == ExprKind::Aggregate || argument->kind == ExprKind::StringLiteral) {
+            if (argument->kind == ExprKind::Aggregate || argument->kind == ExprKind::StringLiteral
+                || argument->kind == ExprKind::Null || argument->kind == ExprKind::Allocator) {
                 analyzeExpr(argument, scope, chosen->parameters[index]->type);
             }
             if (chosen->parameters[index]->mode != ParameterMode::In) {
@@ -2594,13 +2665,19 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
             m_diagnostics.error(expr->location, "'" + expr->name + " takes exactly one argument");
             return nullptr;
         }
-        Type* argumentType = name == "val" ? m_types.integerType() : prefixType;
+        Type* argumentType = name == "val" ? m_types.universalInteger() : prefixType;
         adaptUniversal(expr->arguments.front().get(), argumentType);
         expr->type = prefixType;
         if (expr->arguments.front()->isStatic) {
-            expr->isStatic = true;
             long long value = expr->arguments.front()->staticValue;
-            expr->staticValue = name == "succ" ? value + 1 : (name == "pred" ? value - 1 : value);
+            bool overflow = name == "succ" ? __builtin_add_overflow(value, 1LL, &value)
+                : (name == "pred" && __builtin_sub_overflow(value, 1LL, &value));
+            // Keep exceptional cases in the emitted path so they raise an Ada
+            // exception instead of overflowing the compiler's own arithmetic.
+            if (!overflow && value >= prefixType->low && value <= prefixType->high) {
+                expr->isStatic = true;
+                expr->staticValue = value;
+            }
         }
         return expr->type;
     }
@@ -3339,10 +3416,12 @@ bool Sema::foldStatic(Expr* expr, long long& value) const
             value = operand;
             return true;
         case UnaryOp::Negate:
-            value = -operand;
-            return true;
+            return !__builtin_sub_overflow(0LL, operand, &value);
         case UnaryOp::Abs:
-            value = operand < 0 ? -operand : operand;
+            if (operand < 0) {
+                return !__builtin_sub_overflow(0LL, operand, &value);
+            }
+            value = operand;
             return true;
         case UnaryOp::Not:
             value = operand != 0 ? 0 : 1;
@@ -3359,16 +3438,13 @@ bool Sema::foldStatic(Expr* expr, long long& value) const
         }
         switch (binary->op) {
         case BinaryOp::Add:
-            value = left + right;
-            return true;
+            return !__builtin_add_overflow(left, right, &value);
         case BinaryOp::Subtract:
-            value = left - right;
-            return true;
+            return !__builtin_sub_overflow(left, right, &value);
         case BinaryOp::Multiply:
-            value = left * right;
-            return true;
+            return !__builtin_mul_overflow(left, right, &value);
         case BinaryOp::Divide:
-            if (right == 0) {
+            if (right == 0 || (left == std::numeric_limits<long long>::min() && right == -1)) {
                 return false;
             }
             value = left / right;
@@ -3378,12 +3454,24 @@ bool Sema::foldStatic(Expr* expr, long long& value) const
             if (right == 0) {
                 return false;
             }
-            value = left % right;
+            value = left == std::numeric_limits<long long>::min() && right == -1 ? 0 : left % right;
+            if (binary->op == BinaryOp::Modulo && value != 0 && (value < 0) != (right < 0)) {
+                value += right;
+            }
             return true;
         case BinaryOp::Power: {
+            if (right < 0) {
+                return false;
+            }
             long long result = 1;
-            for (long long i = 0; i < right; ++i) {
-                result *= left;
+            while (right != 0) {
+                if ((right & 1) && __builtin_mul_overflow(result, left, &result)) {
+                    return false;
+                }
+                right >>= 1;
+                if (right != 0 && __builtin_mul_overflow(left, left, &left)) {
+                    return false;
+                }
             }
             value = result;
             return true;
