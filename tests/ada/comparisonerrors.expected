@@ -1,0 +1,5 @@
+comparisonerrors.adb:13:17: error: array ordering requires discrete components
+comparisonerrors.adb:14:17: error: array ordering requires discrete components
+comparisonerrors.adb:15:17: error: array ordering requires discrete components
+comparisonerrors.adb:16:17: error: array ordering requires discrete components
+comparisonerrors.adb:17:17: error: array ordering requires discrete components

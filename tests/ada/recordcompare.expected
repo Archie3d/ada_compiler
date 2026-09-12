@@ -1,0 +1,11 @@
+inactive variant storage is ignored
+runtime discriminant selects active fields
+active field difference
+common field difference
+empty variant ignores all variant storage
+different discriminants are unequal
+others alternative equality
+different discriminants sharing an alternative
+active array component difference
+nested variant record equality
+nested variant record difference

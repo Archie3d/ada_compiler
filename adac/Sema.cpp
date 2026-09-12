@@ -3014,6 +3014,11 @@ Type* Sema::analyzeBinaryOperation(BinaryExpr* expr, Scope* scope, Type* expecte
             && baseType(left)->kind == TypeKind::Record && representationVisible(left)) {
             m_diagnostics.error(expr->location, "records can be compared for equality, but not put in order");
         }
+        if (expr->op != BinaryOp::Equal && expr->op != BinaryOp::NotEqual
+            && left != nullptr && left->kind == TypeKind::Array
+            && !isDiscrete(left->element) && representationVisible(left)) {
+            m_diagnostics.error(expr->location, "array ordering requires discrete components");
+        }
         expr->type = m_types.booleanType();
         return expr->type;
     }

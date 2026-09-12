@@ -111,6 +111,7 @@ private:
     std::pair<std::string, std::string> boundsFor(Symbol* symbol);
     Value compareArrays(BinaryOp op, const Value& left, Type* leftType, const Value& right, Type* rightType);
     Value compareRecords(const Value& left, const Value& right, Type* type);
+    Value compareObjects(const Value& left, const Value& right, Type* type);
 
     Value addressOf(Symbol* symbol);
     Value staticLinkFor(int targetLevel);

@@ -58,10 +58,13 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`, `adac/Sema.cpp`.
   caller-owned storage or another explicit lifetime strategy.
 - [ ] Return bounds alongside unconstrained array results. Support use of results
   in initialization, assignment, indexing, and nested calls.
-- [ ] Compare non-character arrays element by element. `compareArrays` currently
-  calls the byte-oriented string helper even for arrays of larger elements.
-- [ ] Compare only the active components of variant records. `compareRecords`
-  currently walks every field, including overlapping inactive alternatives.
+- [x] Compare non-character arrays element by element, recursively for composite
+  elements. Discrete-element array ordering is lexicographic; arrays of other
+  element types support equality only. Covered by `arraycompare.adb` and
+  `comparisonerrors.adb`, including runtime null ranges and non-1 lower bounds.
+- [x] Compare only the active components of variant records, after checking common
+  fields and discriminants. Covered by `recordcompare.adb`, including deterministic
+  differences in inactive storage and nested variant records.
 - [ ] Enforce array type identity independently of element-type equality;
   `typesCompatible` currently accepts distinct array types with the same element
   root type. Preserve contextual typing of string literals and aggregates.
@@ -263,7 +266,6 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: composite comparison fixes; parameterless/default call
-resolution; composite return lifetimes; exception/elaboration corrections; dynamic
-array descriptors; multidimensional arrays. Modular types can be developed as a
+Suggested next sequence: parameterless/default call resolution; composite return
+lifetimes; exception/elaboration corrections; dynamic array descriptors; multidimensional arrays. Modular types can be developed as a
 separate bounded extension after the numeric follow-up checks.

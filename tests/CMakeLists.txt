@@ -140,3 +140,7 @@ add_test(NAME harness.exit_status
         -DWORKDIR=${ADA_TEST_WORK_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/CheckExitStatus.cmake
 )
+
+add_ada_test(arraycompare SOURCES arraycompare.adb)
+add_ada_test(recordcompare SOURCES recordcompare.adb)
+add_ada_error_test(comparisonerrors SOURCES comparisonerrors.adb)

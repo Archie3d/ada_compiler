@@ -167,6 +167,20 @@ run time. Slices, `&` on strings, and comparison with `=`, `/=`, `<`, `<=`, `>`
 and `>=` are supported; assigning a value of a different length raises
 `Constraint_Error`.
 
+### Composite comparisons
+
+Array equality compares corresponding elements by position, independently of
+lower bounds, and requires equal lengths. Null arrays compare equal even when
+their bounds differ. Comparison is recursive for record and array elements;
+floating elements use numeric equality rather than byte equality. Ordering is
+available for one-dimensional arrays of discrete elements and is lexicographic.
+Arrays of floating-point, record, array, or access elements support equality
+but not predefined ordering.
+
+Record equality compares common components and discriminants, then only the
+active variant's components. Padding and inactive variant storage are ignored.
+These rules follow [Ada 95 RM 4.5.2](https://www.adaic.org/resources/add_content/standards/95lrm/ARM_HTML/RM-4-5-2.html).
+
 ### Access types and allocators
 
 An access type designates objects taken from storage rather than declared. A

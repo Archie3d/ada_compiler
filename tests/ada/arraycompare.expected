@@ -1,0 +1,28 @@
+matching elements with different bounds
+difference beyond first bytes
+signed element ordering
+equal arrays include ordering endpoints
+equal arrays exclude strict ordering
+prefix ordering
+different lengths are unequal
+different null ranges are equal
+null array ordering
+parameter equality ignores lower bounds
+parameter inequality complements equality
+parameter equality ignores lower bounds
+parameter inequality complements equality
+runtime prefix and null ordering
+runtime null ranges have equal order
+slice comparison
+enumeration element ordering
+signed byte element ordering
+64-bit elements
+floating signed zeros are equal
+NaN element is unequal to itself
+record elements
+record element difference
+nested array elements
+nested array difference
+null access elements
+shared access elements
+access identity rather than designated contents
