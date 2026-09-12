@@ -169,13 +169,21 @@ future work: use an explicitly constrained object or subtype for these cases.
 The new internal return convention requires rebuilding Ada code and using the
 matching runtime; imported C calls retain their existing convention.
 
-Within block and subprogram handlers, bare `raise;` re-raises the original
+Within block, subprogram, and library package-body handlers, bare `raise;` re-raises the original
 exception, even after a nested handler or called routine handles a different
 exception. Bare raises outside handlers or inside an enclosed body are rejected,
 following the [Ada raise-statement rules](https://docs.adacore.com/live/wave/arm22/html/arm22/RM-11-3.html).
 An unhandled exception during library elaboration is reported with exit status 1
-before the main procedure is called. Package elaboration ordering and emission
-of package-body handlers remain future work.
+before the main procedure is called. Library package declarations and body
+statements execute in declaration order within the loader's unit order, including
+nested packages and library generic instances. Package-body handlers can recover
+and let elaboration continue; declaration failures bypass that package's handlers,
+and failures raised by a handler propagate outward.
+
+Dependency ordering and per-call elaboration of local packages remain future
+work. Local generic packages currently use global storage initialized after
+library units, so calls to those instances during library elaboration remain
+unsupported.
 
 Floating point types are declared with `digits`, optionally with a range:
 

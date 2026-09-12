@@ -284,12 +284,6 @@ void QbeEmitter::collectGlobals(DeclList& declarations)
                 long long alignment = typeAlignment(symbol->type);
                 m_data << "data " << symbol->qbeName << " = align " << (alignment < 1 ? 1 : alignment) << " { z "
                        << (size < 1 ? 1 : size) << " }\n";
-                if (object->initializer) {
-                    m_globalInitializers.emplace_back(symbol, object->initializer.get());
-                } else if (hasComponentDefaults(symbol->type)) {
-                    // No value of its own, but its components have theirs.
-                    m_globalInitializers.emplace_back(symbol, nullptr);
-                }
             }
             break;
         }
@@ -316,10 +310,39 @@ void QbeEmitter::collectGlobals(DeclList& declarations)
 void QbeEmitter::emitElaborationDeclarations(DeclList& declarations)
 {
     for (const DeclPtr& decl : declarations) {
-        if (decl->kind == DeclKind::PackageBody) {
+        if (decl->kind == DeclKind::Object) {
+            auto* object = static_cast<ObjectDecl*>(decl.get());
+            if (object->awaitsValue) {
+                continue;
+            }
+            for (Symbol* symbol : object->symbols) {
+                if (!symbol->isGlobal) {
+                    continue;
+                }
+                Value address { symbol->qbeName, 'l' };
+                if (object->initializer) {
+                    assignInto(address, symbol->type, object->initializer.get());
+                } else {
+                    emitDefaultInit(address, symbol->type);
+                }
+            }
+        } else if (decl->kind == DeclKind::PackageBody) {
             auto* package = static_cast<PackageBodyDecl*>(decl.get());
+            // Declaration failures bypass this package's handlers, but may
+            // reach a surrounding handled sequence containing the package.
             emitElaborationDeclarations(package->declarations);
-            emitStatements(package->body);
+            if (package->handlers.empty()) {
+                emitStatements(package->body);
+            } else {
+                std::string dispatch = newLabel("packagehandler");
+                std::string after = newLabel("packagehandled");
+                m_context->handlerLabels.push_back(dispatch);
+                emitStatements(package->body);
+                m_context->handlerLabels.pop_back();
+                jump(after);
+                emitHandlers(package->handlers, after, dispatch);
+                label(after);
+            }
         } else if (decl->kind == DeclKind::PackageSpecification) {
             auto* package = static_cast<PackageSpecDecl*>(decl.get());
             emitElaborationDeclarations(package->publicPart);
@@ -337,19 +360,15 @@ void QbeEmitter::emitElaboration(const std::vector<CompilationUnit*>& units)
     FunctionContext* saved = m_context;
     m_context = &context;
 
-    for (const auto& initializer : m_globalInitializers) {
-        Value address { initializer.first->qbeName, 'l' };
-        if (initializer.second != nullptr) {
-            assignInto(address, initializer.first->type, initializer.second);
-        } else {
-            emitDefaultInit(address, initializer.first->type);
-        }
-    }
-    for (GenericInstantiationDecl* instance : m_sema.libraryInstances()) {
-        emitElaborationDeclarations(instance->expansion);
-    }
+    // Storage collection is separate from execution: each initializer runs
+    // where its declaration occurs, after preceding package bodies finish.
     for (CompilationUnit* unit : units) {
         emitElaborationDeclarations(unit->units);
+    }
+    // Locally declared generic packages are still hoisted by Sema. Until they
+    // gain per-call elaboration, initialize them after their library context.
+    for (GenericInstantiationDecl* instance : m_sema.libraryInstances()) {
+        emitElaborationDeclarations(instance->expansion);
     }
 
     finishFunction("function $__ada_elaborate()");

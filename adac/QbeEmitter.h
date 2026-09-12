@@ -132,6 +132,4 @@ private:
     int m_tempCounter = 0;
     int m_labelCounter = 0;
     int m_dataCounter = 0;
-    std::vector<std::pair<Symbol*, Expr*>> m_globalInitializers;
-    std::vector<StmtList*> m_elaborationStatements;
 };

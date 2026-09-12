@@ -172,3 +172,11 @@ add_ada_test(elaborationbodyfailure SOURCES elaborationbodyfailure.adb
     EXIT_CODE 1 STDERR elaborationbodyfailure.stderr)
 add_ada_test(unhandledreraise SOURCES unhandledreraise.adb
     EXIT_CODE 1 STDERR unhandledreraise.stderr)
+
+add_ada_test(elaborationorder SOURCES elaborationorder.adb)
+add_ada_test(packagehandlers SOURCES packagehandlers.adb)
+add_ada_test(packagedeclarationfailure SOURCES packagedeclarationfailure.adb
+    EXIT_CODE 1 STDERR packagedeclarationfailure.stderr)
+add_ada_test(packagehandlerfailure SOURCES packagehandlerfailure.adb
+    EXIT_CODE 1 STDERR packagehandlerfailure.stderr)
+add_ada_test(genericelaborationorder SOURCES genericelaborationorder.adb)
