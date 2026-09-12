@@ -21,14 +21,17 @@ function $hello() {
 export function w $main() {
 @start
     call $__ada_elaborate()
-    call $hello()
     %.t1 =w loadsw $__ada_exception
-    jnz %.t1, @unhandled.4, @done.5
+    jnz %.t1, @unhandled.4, @elaborated.5
+@elaborated.5
+    call $hello()
+    %.t2 =w loadsw $__ada_exception
+    jnz %.t2, @unhandled.4, @done.6
 @unhandled.4
-    %.t2 =l loadl $__ada_exception_name
-    call $__ada_unhandled(l %.t2)
+    %.t3 =l loadl $__ada_exception_name
+    call $__ada_unhandled(l %.t3)
     ret 1
-@done.5
+@done.6
     ret 0
 }
 

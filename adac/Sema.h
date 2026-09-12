@@ -128,6 +128,7 @@ private:
     Type* m_addressType = nullptr;
     Symbol* m_main = nullptr;
     Symbol* m_currentSubprogram = nullptr;
+    int m_handlerDepth = 0;
     std::vector<LoopStmt*> m_loops;
     std::vector<std::string> m_namePrefix;
     std::vector<GenericInstantiationDecl*> m_libraryInstances;

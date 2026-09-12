@@ -99,19 +99,26 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Sema.cpp`, `adac/UnitLoader.cpp`.
 - [ ] Implement scalar `out`/`in out` copy-in/copy-out behavior and checks on the
   actual object's subtype. The current implementation passes all writable
   parameters by reference. Treat composite parameter mechanisms separately.
-- [ ] Diagnose invalid function return usage and handle reaching a function's end
-  without a result. Composite functions now raise `Program_Error` on fallthrough;
-  scalar functions still receive an implicit zero return value.
-- [ ] Implement bare `raise;` as re-raising the active exception, including after
-  a nested handler. The current emitter substitutes `Constraint_Error` when no
-  exception symbol is present.
+- [x] Diagnose value returns from procedures, bare returns from functions, and
+  returns outside subprograms. Every result representation now raises
+  `Program_Error` on fallthrough, including after a handled exception. Covered
+  by `functionfallthrough.adb`, `exceptionusageerrors.adb`, and `compositereturns.adb`.
+- [x] Implement bare `raise;` in block/subprogram handlers by preserving the
+  handled exception's identity and name, including across nested handlers and
+  calls. Reject bare raises outside handlers or inside bodies enclosed by a
+  handler. Covered by `reraise.adb`, `unhandledreraise.adb`, and
+  `exceptionusageerrors.adb`.
 - [ ] Retain exception occurrence bindings (`when E : ...`) instead of discarding
   them, then add occurrence information and messages.
 - [ ] **Audit** handler choice legality and propagation from declarations, package
-  bodies, called routines, and handlers themselves.
+  bodies, called routines, and handlers themselves. Subprogram declaration and
+  handler propagation have regression coverage in `reraise.adb`; package-body
+  handlers still need emission, along with elaboration ordering corrections.
 - [ ] Preserve elaboration order between declarations and package body statements.
   The emitter currently runs all global initializers before package statements.
-- [ ] Stop before calling the main procedure when library elaboration fails.
+- [x] Stop before calling the main procedure when library elaboration fails;
+  report the exception and exit with status 1. Covered by `elaborationfailure.adb`
+  and `elaborationbodyfailure.adb` (stdout, stderr, and exit status).
 - [ ] Elaborate local generic package instances per execution of their enclosing
   scope, with local state and captures. They currently become library globals.
 - [ ] **Audit** unit visibility, dependency cycles, explicit-source/spec/body

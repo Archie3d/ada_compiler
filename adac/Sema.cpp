@@ -1063,6 +1063,8 @@ void Sema::analyzeSubprogramBody(SubprogramBody* body, Scope* scope)
 
     Symbol* savedSubprogram = m_currentSubprogram;
     m_currentSubprogram = symbol;
+    int savedHandlerDepth = m_handlerDepth;
+    m_handlerDepth = 0;
     m_namePrefix.push_back(symbol->name);
 
     analyzeDeclarativePart(body->declarations, inner);
@@ -1071,6 +1073,7 @@ void Sema::analyzeSubprogramBody(SubprogramBody* body, Scope* scope)
 
     m_namePrefix.pop_back();
     m_currentSubprogram = savedSubprogram;
+    m_handlerDepth = savedHandlerDepth;
 }
 
 // A library unit written as Ada.Text_IO is a child declared inside Ada, so each
@@ -1173,11 +1176,14 @@ void Sema::analyzePackageBody(PackageBodyDecl* decl, Scope* scope)
     Symbol* symbol = declarePackagePath(decl->lower, decl->name, scope, decl->location, pushed);
     decl->symbol = symbol;
 
+    int savedHandlerDepth = m_handlerDepth;
+    m_handlerDepth = 0;
     m_packages.push_back(symbol);
     analyzeDeclarativePart(decl->declarations, symbol->scope);
     analyzeStatements(decl->body, symbol->scope);
     analyzeHandlers(decl->handlers, symbol->scope);
     m_packages.pop_back();
+    m_handlerDepth = savedHandlerDepth;
 
     for (std::size_t i = 0; i < pushed; ++i) {
         m_namePrefix.pop_back();
@@ -1617,7 +1623,9 @@ void Sema::analyzeHandlers(std::vector<ExceptionHandler>& handlers, Scope* scope
             }
             handler.identifiers.push_back(symbol->exceptionId);
         }
+        ++m_handlerDepth;
         analyzeStatements(handler.body, scope);
+        --m_handlerDepth;
     }
 }
 
@@ -1819,6 +1827,10 @@ void Sema::analyzeStatement(Stmt* statement, Scope* scope)
     case StmtKind::Return: {
         auto* returnStatement = static_cast<ReturnStmt*>(statement);
         Type* expected = m_currentSubprogram != nullptr ? m_currentSubprogram->returnType : nullptr;
+        if (m_currentSubprogram == nullptr) {
+            m_diagnostics.error(returnStatement->location, "a return statement must appear within a subprogram");
+            break;
+        }
         if (returnStatement->value) {
             Type* valueType = analyzeExpr(returnStatement->value.get(), scope, expected);
             if (expected == nullptr) {
@@ -1849,6 +1861,9 @@ void Sema::analyzeStatement(Stmt* statement, Scope* scope)
     case StmtKind::Raise: {
         auto* raise = static_cast<RaiseStmt*>(statement);
         if (raise->lower.empty()) {
+            if (m_handlerDepth == 0) {
+                m_diagnostics.error(raise->location, "a bare raise must appear within an exception handler, not an enclosed body");
+            }
             break;
         }
         Symbol* symbol = lookupName(raise->lower, scope);

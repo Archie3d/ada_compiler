@@ -389,9 +389,10 @@ void QbeEmitter::finishFunction(const std::string& signature)
 
     if (!context.terminated) {
         if (context.symbol != nullptr && context.symbol->returnType != nullptr) {
+            // A missing result is a failure for every result representation.
+            line("call $__ada_raise(w 2)");
             char type = qbeClass(context.symbol->returnType);
             if (isComposite(context.symbol->returnType)) {
-                line("call $__ada_raise(w 2)");
                 line("ret");
             } else if (type == 's' || type == 'd') {
                 std::string zero = newTemp();
@@ -559,12 +560,17 @@ void QbeEmitter::emitMain()
     FunctionContext* saved = m_context;
     m_context = &context;
 
+    std::string unhandled = newLabel("unhandled");
+    std::string elaborated = newLabel("elaborated");
     line("call $__ada_elaborate()");
+    std::string elaborationStatus = newTemp();
+    line(elaborationStatus + " =w loadsw $__ada_exception");
+    branch(Value { elaborationStatus, 'w' }, unhandled, elaborated);
+    label(elaborated);
     if (main != nullptr) {
         line("call " + main->qbeName + "()");
     }
 
-    std::string unhandled = newLabel("unhandled");
     std::string done = newLabel("done");
     std::string status = newTemp();
     line(status + " =w loadsw $__ada_exception");
@@ -661,11 +667,18 @@ void QbeEmitter::emitStatements(StmtList& statements)
 
 void QbeEmitter::emitRaise(Symbol* exception, const SourceLocation& location)
 {
-    (void)location;
-    int id = exception != nullptr ? exception->exceptionId : 1;
-    std::string name = stringData(upperCase(exception != nullptr ? exception->displayName : "CONSTRAINT_ERROR"));
-    line("storew " + std::to_string(id) + ", $__ada_exception");
-    line("storel " + name + ", $__ada_exception_name");
+    if (exception == nullptr) {
+        if (m_context->activeExceptions.empty()) {
+            m_diagnostics.error(location, "internal error: bare raise without an active handler");
+            return;
+        }
+        const auto& occurrence = m_context->activeExceptions.back();
+        line("storew " + occurrence.first + ", $__ada_exception");
+        line("storel " + occurrence.second + ", $__ada_exception_name");
+    } else {
+        line("storew " + std::to_string(exception->exceptionId) + ", $__ada_exception");
+        line("storel " + stringData(upperCase(exception->displayName)) + ", $__ada_exception_name");
+    }
     if (!m_context->handlerLabels.empty()) {
         jump(m_context->handlerLabels.back());
     } else {
@@ -695,6 +708,10 @@ void QbeEmitter::emitHandlers(std::vector<ExceptionHandler>& handlers, const std
     std::string status = newTemp();
     line(status + " =w loadsw $__ada_exception");
 
+    // Save the occurrence before clearing the pending status. Nested handlers
+    // and calls may replace both globals while this handler remains active.
+    std::string name = newTemp();
+    line(name + " =l loadl $__ada_exception_name");
     std::vector<std::string> bodyLabels;
     for (std::size_t i = 0; i < handlers.size(); ++i) {
         bodyLabels.push_back(newLabel("handle"));
@@ -739,7 +756,9 @@ void QbeEmitter::emitHandlers(std::vector<ExceptionHandler>& handlers, const std
     for (std::size_t i = 0; i < handlers.size(); ++i) {
         label(bodyLabels[i]);
         line("storew 0, $__ada_exception");
+        m_context->activeExceptions.emplace_back(status, name);
         emitStatements(handlers[i].body);
+        m_context->activeExceptions.pop_back();
         jump(afterLabel);
     }
 }

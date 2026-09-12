@@ -31,11 +31,21 @@ execute_process(
     ERROR_VARIABLE errors
 )
 
-if(NOT status STREQUAL "0")
+if(NOT DEFINED EXIT_CODE)
+    set(EXIT_CODE 0)
+endif()
+if(NOT status STREQUAL "${EXIT_CODE}")
     message(FATAL_ERROR "${NAME} exited with ${status}:\n${actual}${errors}")
 endif()
 
 file(READ "${EXPECTED}" expected)
 if(NOT actual STREQUAL expected)
     message(FATAL_ERROR "output mismatch for ${NAME}\n--- expected ---\n${expected}\n--- actual ---\n${actual}")
+endif()
+
+if(DEFINED STDERR_EXPECTED AND NOT STDERR_EXPECTED STREQUAL "")
+    file(READ "${STDERR_EXPECTED}" expected_errors)
+    if(NOT errors STREQUAL expected_errors)
+        message(FATAL_ERROR "stderr mismatch for ${NAME}\n--- expected ---\n${expected_errors}\n--- actual ---\n${errors}")
+    endif()
 endif()

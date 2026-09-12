@@ -1,0 +1,5 @@
+exceptionusageerrors.adb:4:9: error: a function must return a value
+exceptionusageerrors.adb:8:9: error: a procedure cannot return a value
+exceptionusageerrors.adb:11:5: error: a bare raise must appear within an exception handler, not an enclosed body
+exceptionusageerrors.adb:17:17: error: a bare raise must appear within an exception handler, not an enclosed body
+exceptionusageerrors.adb:28:5: error: a return statement must appear within a subprogram

@@ -44,6 +44,7 @@ private:
         std::unordered_map<Symbol*, std::string> locals;
         std::unordered_map<Symbol*, std::pair<std::string, std::string>> bounds;
         std::vector<std::string> handlerLabels;
+        std::vector<std::pair<std::string, std::string>> activeExceptions;
         std::unordered_map<const LoopStmt*, std::string> loopExits;
         std::string propagateLabel;
         bool usesPropagate = false;

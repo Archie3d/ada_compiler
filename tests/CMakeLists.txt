@@ -5,7 +5,14 @@ set(ADA_TEST_WORK_DIR ${CMAKE_CURRENT_BINARY_DIR}/work)
 # Builds the sources into a program with the ada driver and compares its
 # standard output with <name>.expected.
 function(add_ada_test name)
-    cmake_parse_arguments(ADA_TEST "" "" "SOURCES" ${ARGN})
+    cmake_parse_arguments(ADA_TEST "" "EXIT_CODE;STDERR" "SOURCES" ${ARGN})
+    if(NOT DEFINED ADA_TEST_EXIT_CODE)
+        set(ADA_TEST_EXIT_CODE 0)
+    endif()
+    set(stderr_expected "")
+    if(DEFINED ADA_TEST_STDERR)
+        set(stderr_expected "${CMAKE_CURRENT_SOURCE_DIR}/ada/${ADA_TEST_STDERR}")
+    endif()
 
     set(sources "")
     foreach(source ${ADA_TEST_SOURCES})
@@ -19,6 +26,8 @@ function(add_ada_test name)
     add_test(NAME ada.${name}
         COMMAND ${CMAKE_COMMAND}
             -DNAME=${name}
+            -DEXIT_CODE=${ADA_TEST_EXIT_CODE}
+            -DSTDERR_EXPECTED=${stderr_expected}
             -DADA=$<TARGET_FILE:ada>
             -DSOURCES=${sources}
             -DEXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/ada/${name}.expected
@@ -153,3 +162,13 @@ add_ada_error_test(defaulterrors SOURCES defaulterrors.adb)
 
 add_ada_test(compositereturns SOURCES compositereturns.adb)
 add_ada_error_test(returnerrors SOURCES returnerrors.adb)
+
+add_ada_test(functionfallthrough SOURCES functionfallthrough.adb)
+add_ada_test(reraise SOURCES reraise.adb)
+add_ada_error_test(exceptionusageerrors SOURCES exceptionusageerrors.adb)
+add_ada_test(elaborationfailure SOURCES elaborationfailure.adb
+    EXIT_CODE 1 STDERR elaborationfailure.stderr)
+add_ada_test(elaborationbodyfailure SOURCES elaborationbodyfailure.adb
+    EXIT_CODE 1 STDERR elaborationbodyfailure.stderr)
+add_ada_test(unhandledreraise SOURCES unhandledreraise.adb
+    EXIT_CODE 1 STDERR unhandledreraise.stderr)

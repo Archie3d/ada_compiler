@@ -158,8 +158,9 @@ Record and constrained-array function results use caller-provided storage.
 Unconstrained-array results preserve their bounds and are copied into the caller
 before use, including in nested calls, indexing, attributes, and constrained
 object initialization or assignment. Length mismatches raise `Constraint_Error`;
-null results preserve their bounds and have zero length. Composite functions
-that fall through without returning raise `Program_Error`.
+null results preserve their bounds and have zero length. Functions of every
+result type that fall through without returning raise `Program_Error`, including
+when a handler finishes without returning a value.
 
 Variable-size result temporaries remain on the caller's stack until it exits,
 so repeated calls in long loops can accumulate stack storage. Unconstrained
@@ -167,6 +168,14 @@ object declarations and inference of unconstrained aggregate bounds remain
 future work: use an explicitly constrained object or subtype for these cases.
 The new internal return convention requires rebuilding Ada code and using the
 matching runtime; imported C calls retain their existing convention.
+
+Within block and subprogram handlers, bare `raise;` re-raises the original
+exception, even after a nested handler or called routine handles a different
+exception. Bare raises outside handlers or inside an enclosed body are rejected,
+following the [Ada raise-statement rules](https://docs.adacore.com/live/wave/arm22/html/arm22/RM-11-3.html).
+An unhandled exception during library elaboration is reported with exit status 1
+before the main procedure is called. Package elaboration ordering and emission
+of package-body handlers remain future work.
 
 Floating point types are declared with `digits`, optionally with a range:
 
