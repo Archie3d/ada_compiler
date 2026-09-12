@@ -124,11 +124,15 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Sema.cpp`, `adac/UnitLoader.cpp`.
 - [x] Stop before calling the main procedure when library elaboration fails;
   report the exception and exit with status 1. Covered by `elaborationfailure.adb`
   and `elaborationbodyfailure.adb` (stdout, stderr, and exit status).
-- [ ] Elaborate local generic package instances per execution of their enclosing
-  scope, with local state and captures. They currently become library globals
-  initialized after library units; calls to them during library elaboration also
-  need the correct per-call initialization. Ordinary subprogram-local packages
-  and declarations inside library statement blocks need coverage as well.
+- [x] Elaborate ordinary packages and generic package instances declared inside
+  subprograms and their blocks when execution reaches the declaration. Objects
+  belong to the enclosing activation; package routines use its static link.
+  Covered by `localpackages.adb`, `localgenericstate.adb`,
+  `localpackagestartup.adb`, and `localpackagefailure.adb`: repeated calls, block
+  re-entry, independent instances, recursion, captures, startup calls, recovery,
+  and failure propagation.
+- [ ] Support declarations inside library-level statement blocks, including
+  object storage, nested subprogram emission, and package elaboration.
 - [ ] **Audit** unit visibility, dependency cycles, explicit-source/spec/body
   loading, and elaboration-before-use checks.
 
@@ -295,5 +299,4 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: local package elaboration; dynamic array
-descriptors; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: dynamic array descriptors; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.

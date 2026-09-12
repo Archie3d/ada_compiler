@@ -1469,29 +1469,12 @@ void Sema::analyzeGenericInstantiation(GenericInstantiationDecl* decl, Scope* sc
         renameUnit(unit.get(), instanceDisplay, instanceName, generic->generic->lower);
     }
 
-    // A generic body sees nothing but its own formals and its context, so an
-    // instance written inside a subprogram is still elaborated once and its
-    // objects still live at library level.  Forgetting the subprogram it was
-    // written in is what says so.
-    Symbol* enclosing = m_currentSubprogram;
-    if (decl->isPackage) {
-        m_currentSubprogram = nullptr;
-    }
-
     ++m_instantiationDepth;
     analyzeDeclarativePart(decl->expansion, bindings);
     --m_instantiationDepth;
 
-    m_currentSubprogram = enclosing;
     for (std::size_t i = 0; i < pushed; ++i) {
         m_namePrefix.pop_back();
-    }
-
-    // An instance written inside a subprogram is elaborated with the library,
-    // so the emitter is told where to find it: nothing walks into a subprogram
-    // looking for units of its own.
-    if (decl->isPackage && enclosing != nullptr) {
-        m_libraryInstances.push_back(decl);
     }
 
     // The instance lives in the bindings scope while it is analysed; here it

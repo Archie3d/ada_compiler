@@ -22,7 +22,6 @@ public:
     // Instances of generic packages written inside a subprogram.  They are
     // elaborated with the library all the same, and nothing walking the units
     // would otherwise find them.
-    const std::vector<GenericInstantiationDecl*>& libraryInstances() const { return m_libraryInstances; }
 
 private:
     void setupStandardScope();
@@ -131,7 +130,6 @@ private:
     int m_handlerDepth = 0;
     std::vector<LoopStmt*> m_loops;
     std::vector<std::string> m_namePrefix;
-    std::vector<GenericInstantiationDecl*> m_libraryInstances;
     std::unordered_map<std::string, std::size_t> m_subprogramNames;
     int m_anonymousCounter = 0;
     int m_exceptionCounter = 1;

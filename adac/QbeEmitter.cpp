@@ -238,24 +238,14 @@ void QbeEmitter::emit(const std::vector<CompilationUnit*>& units, std::ostream& 
     m_data << "export data $__ada_exception = align 4 { z 4 }\n";
     m_data << "export data $__ada_exception_name = align 8 { z 8 }\n";
 
-    // A generic package instantiated inside a subprogram is still elaborated
-    // once, with the library, so it joins what the units themselves declare.
-    const std::vector<GenericInstantiationDecl*>& instances = m_sema.libraryInstances();
-
     for (CompilationUnit* unit : units) {
         collectGlobals(unit->units);
-    }
-    for (GenericInstantiationDecl* instance : instances) {
-        collectGlobals(instance->expansion);
     }
 
     emitElaboration(units);
 
     for (CompilationUnit* unit : units) {
         emitSubprogramsIn(unit->units);
-    }
-    for (GenericInstantiationDecl* instance : instances) {
-        emitSubprogramsIn(instance->expansion);
     }
 
     emitMain();
@@ -365,12 +355,6 @@ void QbeEmitter::emitElaboration(const std::vector<CompilationUnit*>& units)
     for (CompilationUnit* unit : units) {
         emitElaborationDeclarations(unit->units);
     }
-    // Locally declared generic packages are still hoisted by Sema. Until they
-    // gain per-call elaboration, initialize them after their library context.
-    for (GenericInstantiationDecl* instance : m_sema.libraryInstances()) {
-        emitElaborationDeclarations(instance->expansion);
-    }
-
     finishFunction("function $__ada_elaborate()");
     m_context = saved;
 }
@@ -658,15 +642,32 @@ void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
         case DeclKind::SubprogramBody:
             m_context->nested.push_back(static_cast<SubprogramBody*>(decl.get()));
             break;
-        case DeclKind::GenericInstantiation: {
-            // An instance of a generic package belongs to the library rather
-            // than to the subprogram it was written in, and is emitted there.
-            auto* instance = static_cast<GenericInstantiationDecl*>(decl.get());
-            if (!instance->isPackage) {
-                emitLocalDeclarations(instance->expansion);
+        case DeclKind::PackageSpecification: {
+            auto* package = static_cast<PackageSpecDecl*>(decl.get());
+            emitLocalDeclarations(package->publicPart);
+            emitLocalDeclarations(package->privatePart);
+            break;
+        }
+        case DeclKind::PackageBody: {
+            auto* package = static_cast<PackageBodyDecl*>(decl.get());
+            emitLocalDeclarations(package->declarations);
+            if (package->handlers.empty()) {
+                emitStatements(package->body);
+            } else {
+                std::string dispatch = newLabel("packagehandler");
+                std::string after = newLabel("packagehandled");
+                m_context->handlerLabels.push_back(dispatch);
+                emitStatements(package->body);
+                m_context->handlerLabels.pop_back();
+                jump(after);
+                emitHandlers(package->handlers, after, dispatch);
+                label(after);
             }
             break;
         }
+        case DeclKind::GenericInstantiation:
+            emitLocalDeclarations(static_cast<GenericInstantiationDecl*>(decl.get())->expansion);
+            break;
         default:
             break;
         }

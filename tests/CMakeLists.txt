@@ -180,3 +180,8 @@ add_ada_test(packagedeclarationfailure SOURCES packagedeclarationfailure.adb
 add_ada_test(packagehandlerfailure SOURCES packagehandlerfailure.adb
     EXIT_CODE 1 STDERR packagehandlerfailure.stderr)
 add_ada_test(genericelaborationorder SOURCES genericelaborationorder.adb)
+
+add_ada_test(localpackages SOURCES localpackages.adb)
+add_ada_test(localgenericstate SOURCES localgenericstate.adb)
+add_ada_test(localpackagestartup SOURCES localpackagestartup.adb)
+add_ada_test(localpackagefailure SOURCES localpackagefailure.adb)
