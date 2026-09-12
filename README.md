@@ -5,7 +5,7 @@ This project implements an Ada 83/95 subset compiler in C++. It uses [QBE](https
 > This is an experimental project built with a help of AI.
 
 The compilation is performed in three stages:
-- Ada to QBE compiler frotend. This translates Ada source code to QBE intermediate language (IR).
+- Ada to QBE compiler frontend, which translates Ada source code to QBE intermediate language (IR).
 - QBE backend, which compiles IR to the target's assembly.
 - Target's assemly and linker combines the QBE's output with the language runtime to produce an executable.
 
@@ -13,7 +13,7 @@ A compiler driver is provided. This executes all the steps of the compilation to
 
 ## Building
 
-```
+```shell
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build
@@ -23,11 +23,11 @@ the C run time into `build/runtime/libadart.a`.
 
 ### Building on Windows
 When compiling on Windows use [Msys64](https://www.msys2.org/) environment.
-
+You will need `gcc` (mingw), `make`, and `cmake` installed.
 
 ## Installing
 
-```
+```shell
 cmake --install build --prefix /usr/local
 ```
 
