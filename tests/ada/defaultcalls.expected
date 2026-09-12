@@ -1,0 +1,20 @@
+ 1
+ 2
+ 100
+ 2
+ 7
+ 10
+ 20
+default text
+imported default
+partial 5
+explicit 200
+ 42
+ 20
+ 7
+ 6
+real default
+groupgroup
+ 4294967296
+default range check caught
+default exception caught

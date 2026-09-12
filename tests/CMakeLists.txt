@@ -144,3 +144,9 @@ add_test(NAME harness.exit_status
 add_ada_test(arraycompare SOURCES arraycompare.adb)
 add_ada_test(recordcompare SOURCES recordcompare.adb)
 add_ada_error_test(comparisonerrors SOURCES comparisonerrors.adb)
+
+add_ada_test(defaultcalls SOURCES defaultcalls.adb)
+add_ada_test(parameterless SOURCES parameterless.adb)
+add_ada_error_test(parameterlesserrors SOURCES parameterlesserrors.adb)
+
+add_ada_error_test(defaulterrors SOURCES defaulterrors.adb)

@@ -68,6 +68,9 @@ private:
 
     Type* analyzeExpr(Expr* expr, Scope* scope, Type* expected = nullptr);
     Type* analyzeIdentifier(IdentifierExpr* expr, Scope* scope, Type* expected);
+    bool matchesResult(Symbol* subprogram, Type* expected) const;
+    Symbol* resolveBareName(const std::vector<Symbol*>& candidates, Type* expected,
+                            const SourceLocation& location, const std::string& name);
     Type* analyzeSelected(SelectedExpr* expr, Scope* scope, Type* expected);
     Type* constrainDiscriminants(SubtypeIndication* indication, Type* base, Scope* scope);
     int knownVariant(Type* type) const;

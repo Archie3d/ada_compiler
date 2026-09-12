@@ -1910,6 +1910,18 @@ Value QbeEmitter::emitCall(CallExpr* expr)
     if (subprogram == nullptr) {
         return Value { "0", 'w' };
     }
+    // Bare names arrive without an explicit argument list. Complete it from
+    // the resolved declaration before either Ada or imported-call marshalling.
+    expr->resolvedArguments.resize(subprogram->parameters.size(), nullptr);
+    for (std::size_t i = 0; i < subprogram->parameters.size(); ++i) {
+        if (expr->resolvedArguments[i] == nullptr) {
+            expr->resolvedArguments[i] = subprogram->parameters[i]->defaultExpr;
+        }
+        if (expr->resolvedArguments[i] == nullptr) {
+            m_diagnostics.error(expr->location, "internal error: missing resolved call argument");
+            return Value { "0", 'w' };
+        }
+    }
     if (subprogram->builtin == BuiltinKind::Runtime) {
         Value result = emitRuntimeCall(expr, subprogram);
         if (subprogram->canRaise) {
@@ -1926,11 +1938,7 @@ Value QbeEmitter::emitCall(CallExpr* expr)
 
     for (std::size_t i = 0; i < subprogram->parameters.size(); ++i) {
         Symbol* parameter = subprogram->parameters[i];
-        Expr* argument = i < expr->resolvedArguments.size() ? expr->resolvedArguments[i] : nullptr;
-        if (argument == nullptr) {
-            arguments.push_back("w 0");
-            continue;
-        }
+        Expr* argument = expr->resolvedArguments[i];
         if (parameter->byReference) {
             // Composite values are already addresses and carry their bounds.
             Value value = isComposite(argument->type) ? emitExpr(argument) : emitAddress(argument);
@@ -1980,21 +1988,9 @@ Value QbeEmitter::emitRuntimeCall(CallExpr* expr, Symbol* subprogram)
 
     for (std::size_t i = 0; i < subprogram->parameters.size(); ++i) {
         Symbol* parameter = subprogram->parameters[i];
-        Expr* argument = i < expr->resolvedArguments.size() ? expr->resolvedArguments[i] : nullptr;
+        Expr* argument = expr->resolvedArguments[i];
         Type* formal = baseType(parameter->type);
         char formalClass = qbeClass(parameter->type);
-
-        if (argument == nullptr) {
-            // A parameter the caller left out contributes its default, and an
-            // omitted string contributes an empty one.
-            if (formal != nullptr && formal->kind == TypeKind::Array) {
-                arguments.push_back("l 0");
-                arguments.push_back("w 0");
-            } else {
-                arguments.push_back(std::string(1, formalClass) + " " + std::to_string(parameter->defaultValue));
-            }
-            continue;
-        }
 
         if (formal != nullptr && formal->kind == TypeKind::Array) {
             Value pointer = emitExpr(argument);

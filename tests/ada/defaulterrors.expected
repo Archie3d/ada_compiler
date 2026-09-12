@@ -1,0 +1,3 @@
+defaulterrors.adb:2:25: error: only an in parameter can have a default expression
+defaulterrors.adb:6:40: error: the default expression has an incompatible type
+defaulterrors.adb:10:40: error: the default expression has an incompatible type

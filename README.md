@@ -138,11 +138,22 @@ The checked operations currently call C runtime helpers, which adds call overhea
 `for` loops. A loop tests its final value before incrementing or decrementing,
 so a loop ending at a machine limit does not wrap around.
 
-Calls with argument lists use the expected result type when selecting an
-overload, and report ambiguity when several profiles remain. Shared formal
-types provide context for nested calls. Named arguments cannot be repeated or
-followed by positional arguments. Full resolution of mutually overloaded
-nested expressions remains future work.
+Calls with argument lists, bare function names, and package-selected names use
+the expected result type when selecting an overload, and report ambiguity when
+several profiles remain. A bare call may omit all arguments when every formal
+has a default. Procedure call statements select procedures, and enumeration
+literals use the expected enumeration type. Shared formal types provide context
+for nested calls. Named arguments cannot be repeated or followed by positional
+arguments. Full resolution of mutually overloaded nested expressions remains
+future work.
+
+Omitted default expressions are evaluated at each call, including imported
+calls, with names bound in the declaration scope. Each parameter in a grouped
+profile gets its own default evaluation. Explicit arguments skip their defaults;
+default evaluation can raise an exception before the called body is entered.
+Only `in` parameters may have defaults, and the default must have a compatible
+type. Defaults use the same value conventions as explicit arguments; existing
+limitations on composite function results still apply.
 
 Floating point types are declared with `digits`, optionally with a range:
 

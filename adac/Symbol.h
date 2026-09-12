@@ -53,7 +53,6 @@ struct Symbol
 
     // A parameter the caller may leave out.
     bool hasDefault = false;
-    long long defaultValue = 0;
 
     // The expression a parameter declared in Ada falls back on.  It belongs to
     // the declaration, so a call that leaves the parameter out simply points at

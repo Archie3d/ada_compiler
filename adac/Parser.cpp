@@ -688,26 +688,19 @@ void Parser::parseParameterList(SubprogramSpec& spec)
             mode = ParameterMode::Out;
         }
 
-        SubtypeIndicationPtr subtype = parseSubtypeIndication();
-        ExprPtr defaultValue;
-        if (match(TokenKind::Assign)) {
-            defaultValue = parseExpression();
-        }
-
+        // Parse a separate owned subtree for each name in a grouped profile.
+        // Each omitted actual must evaluate its own default, including side effects.
+        std::size_t subtypeStart = m_position;
         for (std::size_t i = 0; i < names.size(); ++i) {
+            m_position = subtypeStart;
             ParameterDecl parameter;
             parameter.name = names[i];
             parameter.lower = lowered[i];
             parameter.mode = mode;
             parameter.location = location;
-            auto copy = std::make_unique<SubtypeIndication>();
-            copy->location = subtype->location;
-            copy->name = subtype->name;
-            copy->lower = subtype->lower;
-            parameter.subtype = std::move(copy);
-            if (i + 1 == names.size()) {
-                parameter.subtype = std::move(subtype);
-                parameter.defaultValue = std::move(defaultValue);
+            parameter.subtype = parseSubtypeIndication();
+            if (match(TokenKind::Assign)) {
+                parameter.defaultValue = parseExpression();
             }
             spec.parameters.push_back(std::move(parameter));
         }

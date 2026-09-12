@@ -1,0 +1,5 @@
+parameterlesserrors.adb:25:10: error: ambiguous name 'Ambiguous'
+parameterlesserrors.adb:26:11: error: no visible interpretation of 'Required' matches this context
+parameterlesserrors.adb:27:5: error: no visible interpretation of 'Only_Function' matches this context
+parameterlesserrors.adb:32:12: error: ambiguous name 'Shared'
+parameterlesserrors.adb:32:21: error: ambiguous name 'Shared'

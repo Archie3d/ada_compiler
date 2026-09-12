@@ -987,6 +987,11 @@ Symbol* Sema::declareSubprogram(SubprogramSpec& spec, Scope* scope, bool isBody)
     symbol->hasBody = isBody;
     symbol->level = m_currentSubprogram != nullptr ? m_currentSubprogram->level + 1 : 0;
     symbol->owner = m_currentSubprogram;
+    if (symbol->owner != nullptr) {
+        // Every intervening lexical level needs a link, even when it has no
+        // captured variables of its own. Defaults can read through that level.
+        symbol->owner->needsFrame = true;
+    }
 
     // Block scopes can also declare the same spelling. Reserve emitted names
     // across the compilation, so shadowing never creates duplicate QBE symbols.
@@ -1008,11 +1013,19 @@ Symbol* Sema::declareSubprogram(SubprogramSpec& spec, Scope* scope, bool isBody)
         parameter->isConstant = declaration.mode == ParameterMode::In;
         parameter->byReference = declaration.mode != ParameterMode::In || isComposite(parameterTypes[i]);
         if (declaration.defaultValue) {
-            analyzeExpr(declaration.defaultValue.get(), scope, parameterTypes[i]);
+            if (declaration.mode != ParameterMode::In) {
+                m_diagnostics.error(declaration.location, "only an in parameter can have a default expression");
+            }
+            Symbol* savedSubprogram = m_currentSubprogram;
+            m_currentSubprogram = symbol;
+            Type* defaultType = analyzeExpr(declaration.defaultValue.get(), scope, parameterTypes[i]);
+            m_currentSubprogram = savedSubprogram;
+            if (!typesCompatible(parameterTypes[i], defaultType)) {
+                m_diagnostics.error(declaration.defaultValue->location, "the default expression has an incompatible type");
+            }
             adaptUniversal(declaration.defaultValue.get(), parameterTypes[i]);
             parameter->hasDefault = true;
             parameter->defaultExpr = declaration.defaultValue.get();
-            foldStatic(declaration.defaultValue.get(), parameter->defaultValue);
         }
         declaration.symbol = parameter;
         symbol->parameters.push_back(parameter);
@@ -1679,7 +1692,25 @@ void Sema::analyzeStatement(Stmt* statement, Scope* scope)
 
     case StmtKind::ProcedureCall: {
         auto* call = static_cast<ProcedureCallStmt*>(statement);
-        analyzeExpr(call->call.get(), scope, nullptr);
+        int errorsBefore = m_diagnostics.errorCount();
+        Expr* expression = call->call.get();
+        Type* result = analyzeExpr(expression, scope, m_types.voidType());
+        if (m_diagnostics.errorCount() != errorsBefore) {
+            break;
+        }
+        Symbol* target = nullptr;
+        if (expression->kind == ExprKind::Identifier) {
+            target = static_cast<IdentifierExpr*>(expression)->symbol;
+        } else if (expression->kind == ExprKind::Selected) {
+            target = static_cast<SelectedExpr*>(expression)->symbol;
+        } else if (expression->kind == ExprKind::Call) {
+            target = static_cast<CallExpr*>(expression)->subprogram;
+        }
+        bool streamProcedure = expression->kind == ExprKind::Attribute && result == m_types.voidType();
+        if (!streamProcedure && (target == nullptr || target->kind != SymbolKind::Subprogram
+                                 || target->returnType != nullptr)) {
+            m_diagnostics.error(expression->location, "a procedure call statement requires a procedure");
+        }
         break;
     }
 
@@ -1933,7 +1964,7 @@ Type* Sema::analyzeExpr(Expr* expr, Scope* scope, Type* expected)
     case ExprKind::IntegerLiteral: {
         auto* literal = static_cast<IntegerLiteralExpr*>(expr);
         Type* type = m_types.universalInteger();
-        if (expected != nullptr && isDiscrete(expected)) {
+        if (expected != nullptr && expected->kind == TypeKind::Integer) {
             type = expected;
         }
         expr->type = type;
@@ -2011,6 +2042,51 @@ void Sema::noteReference(Symbol* symbol)
     }
 }
 
+bool Sema::matchesResult(Symbol* subprogram, Type* expected) const
+{
+    if (expected == nullptr) {
+        return true;
+    }
+    if (expected->kind == TypeKind::Void) {
+        return subprogram->returnType == nullptr;
+    }
+    return subprogram->returnType != nullptr && typesCompatible(expected, subprogram->returnType);
+}
+
+Symbol* Sema::resolveBareName(const std::vector<Symbol*>& candidates, Type* expected,
+                              const SourceLocation& location, const std::string& name)
+{
+    // Ordinary objects and type/package names continue through their existing
+    // semantic paths. Overloadable names must have exactly one interpretation.
+    for (Symbol* candidate : candidates) {
+        if (candidate->kind != SymbolKind::Subprogram && candidate->kind != SymbolKind::EnumerationLiteral) {
+            return candidate;
+        }
+    }
+    Symbol* chosen = nullptr;
+    for (Symbol* candidate : candidates) {
+        if (candidate->kind == SymbolKind::Subprogram) {
+            if (!matchesResult(candidate, expected)
+                || std::any_of(candidate->parameters.begin(), candidate->parameters.end(), [](Symbol* parameter) {
+                    return !parameter->hasDefault;
+                })) {
+                continue;
+            }
+        } else if (expected != nullptr && !typesCompatible(expected, candidate->type)) {
+            continue;
+        }
+        if (chosen != nullptr) {
+            m_diagnostics.error(location, "ambiguous name '" + name + "'");
+            return nullptr;
+        }
+        chosen = candidate;
+    }
+    if (chosen == nullptr) {
+        m_diagnostics.error(location, "no visible interpretation of '" + name + "' matches this context");
+    }
+    return chosen;
+}
+
 Type* Sema::analyzeIdentifier(IdentifierExpr* expr, Scope* scope, Type* expected)
 {
     std::vector<Symbol*> candidates = scope->lookup(expr->lower);
@@ -2019,20 +2095,9 @@ Type* Sema::analyzeIdentifier(IdentifierExpr* expr, Scope* scope, Type* expected
         return nullptr;
     }
 
-    Symbol* chosen = candidates.front();
-    if (expected != nullptr) {
-        for (Symbol* candidate : candidates) {
-            if (candidate->kind == SymbolKind::EnumerationLiteral
-                && rootType(candidate->type) == rootType(expected)) {
-                chosen = candidate;
-                break;
-            }
-            if (candidate->kind == SymbolKind::Subprogram && candidate->parameters.empty()
-                && candidate->returnType != nullptr && rootType(candidate->returnType) == rootType(expected)) {
-                chosen = candidate;
-                break;
-            }
-        }
+    Symbol* chosen = resolveBareName(candidates, expected, expr->location, expr->name);
+    if (chosen == nullptr) {
+        return nullptr;
     }
     expr->symbol = chosen;
 
@@ -2060,13 +2125,6 @@ Type* Sema::analyzeIdentifier(IdentifierExpr* expr, Scope* scope, Type* expected
         expr->staticValue = chosen->enumerationValue;
         return expr->type;
     case SymbolKind::Subprogram:
-        // A name on its own still calls, as long as nothing is left unsupplied.
-        for (Symbol* parameter : chosen->parameters) {
-            if (!parameter->hasDefault) {
-                m_diagnostics.error(expr->location, "'" + expr->name + "' requires arguments");
-                break;
-            }
-        }
         expr->type = chosen->returnType;
         return expr->type;
     case SymbolKind::TypeName:
@@ -2108,14 +2166,9 @@ Type* Sema::analyzeSelected(SelectedExpr* expr, Scope* scope, Type* expected)
                                                     + prefixSymbol->displayName + "'");
             return nullptr;
         }
-        Symbol* chosen = candidates.front();
-        if (expected != nullptr) {
-            for (Symbol* candidate : candidates) {
-                if (candidate->type != nullptr && rootType(candidate->type) == rootType(expected)) {
-                    chosen = candidate;
-                    break;
-                }
-            }
+        Symbol* chosen = resolveBareName(candidates, expected, expr->location, expr->selector);
+        if (chosen == nullptr) {
+            return nullptr;
         }
         expr->symbol = chosen;
         noteReference(chosen);
@@ -2321,7 +2374,7 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
     if (expected != nullptr && hasSubprograms) {
         std::erase_if(candidates, [&](Symbol* candidate) {
             return candidate->kind == SymbolKind::Subprogram
-                && (candidate->returnType == nullptr || !typesCompatible(expected, candidate->returnType));
+                && !matchesResult(candidate, expected);
         });
         if (candidates.empty() && (expr->callee->kind == ExprKind::Identifier
                                   || expr->callee->kind == ExprKind::Selected)) {
@@ -2552,7 +2605,9 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
         // An aggregate waits for the stream attributes below, which know the
         // type it is meant to have.
         if (argument->kind != ExprKind::Aggregate) {
-            analyzeExpr(argument.get(), scope, nullptr);
+            bool contextual = expr->lower == "image" || expr->lower == "pos"
+                || expr->lower == "succ" || expr->lower == "pred";
+            analyzeExpr(argument.get(), scope, contextual ? prefixType : nullptr);
         }
     }
 

@@ -35,10 +35,15 @@ Primary code: `adac/Sema.cpp`, `adac/Scope.cpp`.
 
 - [ ] Resolve mutually overloaded nested expressions using candidate sets and
   surrounding context. The current shared-formal-type heuristic is incomplete.
-- [ ] Apply the same selection and ambiguity rules to parameterless functions,
-  package-selected names, enumeration literals, and calls using only defaults.
-  `analyzeIdentifier` and `analyzeSelected` still have first-candidate fallbacks.
-- [ ] Evaluate omitted default expressions correctly for every call form.
+- [x] Apply result-context selection and ambiguity checks to parameterless
+  functions, package-selected names, enumeration literals, and calls using only
+  defaults. Procedure statements select procedures, not functions whose values
+  would be discarded. Covered by `parameterless.adb` and `parameterlesserrors.adb`.
+- [x] Evaluate omitted defaults for supported Ada and imported call forms at each
+  call, using declaration-scope bindings. Preserve grouped parameter defaults,
+  captured environments, subtype checks, and exception propagation. Covered by
+  `defaultcalls.adb` and `defaulterrors.adb`; composite-result lifetime limitations
+  still apply when a default expression itself returns a composite value.
 - [ ] Add user-defined operator declarations and calls, including operator symbols
   such as `function "+" (...) return T`.
 - [ ] **Audit** visibility, `use` clauses, homographs, duplicate declarations, and
@@ -266,6 +271,6 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: parameterless/default call resolution; composite return
-lifetimes; exception/elaboration corrections; dynamic array descriptors; multidimensional arrays. Modular types can be developed as a
-separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: composite return lifetimes; exception/elaboration
+corrections; dynamic array descriptors; multidimensional arrays. Modular types
+can be developed as a separate bounded extension after the numeric follow-up checks.
