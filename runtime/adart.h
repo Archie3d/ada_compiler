@@ -41,6 +41,8 @@ void __ada_raise(int id);
    cannot be met, and freeing null does nothing. */
 void* __ada_allocate(long size);
 void __ada_deallocate(void* address);
+void* __ada_array_local(void** owner, int first, int last, int64_t elementSize);
+void __ada_array_release(void** owner);
 
 /* Internal unconstrained-array return descriptor: pointer, two 32-bit bounds,
    and a 64-bit transfer size. The caller owns and releases the buffer. */

@@ -1,0 +1,2 @@
+dynamicarrayerrors.adb:2:5: error: an unconstrained array object needs an initializer or index constraint
+dynamicarrayerrors.adb:4:31: error: index constraints must be static

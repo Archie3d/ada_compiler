@@ -163,9 +163,9 @@ result type that fall through without returning raise `Program_Error`, including
 when a handler finishes without returning a value.
 
 Variable-size result temporaries remain on the caller's stack until it exits,
-so repeated calls in long loops can accumulate stack storage. Unconstrained
-object declarations and inference of unconstrained aggregate bounds remain
-future work: use an explicitly constrained object or subtype for these cases.
+so repeated calls in long loops can accumulate stack storage. Inference of
+unconstrained aggregate bounds remains future work; return a constrained local
+object or use a constrained subtype for these aggregates.
 The new internal return convention requires rebuilding Ada code and using the
 matching runtime; imported C calls retain their existing convention.
 
@@ -190,6 +190,28 @@ still apply.
 
 Dependency ordering and declarations inside library-level statement blocks
 remain future work.
+
+Local one-dimensional arrays can use runtime index constraints or take their
+bounds from an initializer:
+
+```ada
+Buffer : String (1 .. N) := (others => ' ');
+Copy   : String := Make_Text;
+```
+
+The object keeps its bounds for its lifetime. Assignment checks lengths and
+slides the source to the target bounds; indexing checks runtime bounds. Bounds
+also travel through slices, function results, calls, and captured variables.
+`others` aggregates and component defaults are evaluated per element. Grouped
+object declarations evaluate an initializer separately for each object.
+
+Dynamic local array data uses heap storage owned by the enclosing call and is
+released on normal return or exception propagation. Repeated block entries retain
+allocations until that call exits. This implementation uses signed 32-bit bounds,
+limits lengths to `Integer'Last`, checks allocation sizes, and raises
+`Storage_Error` on allocation failure. Runtime named subtype constraints,
+library-level dynamic objects, and positional/named runtime-bounded aggregates
+remain unsupported.
 
 Floating point types are declared with `digits`, optionally with a range:
 

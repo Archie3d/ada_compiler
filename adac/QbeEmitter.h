@@ -37,6 +37,7 @@ private:
         std::ostringstream prologue;
         std::ostringstream body;
         std::string frameAllocation;
+        std::string arrayArena;
         std::string frameTemp;
         bool hasFrame = false;
         bool terminated = false;
@@ -72,6 +73,8 @@ private:
 
     // Statements.
     void emitLocalDeclarations(DeclList& declarations);
+    void emitDynamicArray(ObjectDecl* object, Symbol* symbol);
+    void emitArrayFill(const Value& address, Type* type, Expr* value);
     void emitStatements(StmtList& statements);
     void emitStatement(Stmt* statement);
     void emitHandlers(std::vector<ExceptionHandler>& handlers, const std::string& afterLabel,

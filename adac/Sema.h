@@ -19,10 +19,6 @@ public:
     TypeTable& typeTable() { return m_types; }
     Symbol* mainSubprogram() const { return m_main; }
 
-    // Instances of generic packages written inside a subprogram.  They are
-    // elaborated with the library all the same, and nothing walking the units
-    // would otherwise find them.
-
 private:
     void setupStandardScope();
     Symbol* addException(Scope* scope, const std::string& displayName);
@@ -93,7 +89,7 @@ private:
     Type* analyzeUnary(UnaryExpr* expr, Scope* scope, Type* expected);
     Type* analyzeMembership(MembershipExpr* expr, Scope* scope);
 
-    Type* resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope);
+    Type* resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope, bool allowDynamic = false);
     Type* resolveTypeName(const std::string& lower, Scope* scope, const SourceLocation& location);
     Symbol* lookupName(const std::string& lower, Scope* scope);
     std::vector<Symbol*> lookupAll(const std::string& lower, Scope* scope);

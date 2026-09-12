@@ -368,7 +368,15 @@ void Sema::analyzeDecl(Decl* decl, Scope* scope)
 
 void Sema::analyzeObjectDecl(ObjectDecl* decl, Scope* scope)
 {
-    Type* type = resolveSubtypeIndication(decl->subtype.get(), scope);
+    Type* type = resolveSubtypeIndication(decl->subtype.get(), scope, m_currentSubprogram != nullptr);
+
+    if (type != nullptr && type->kind == TypeKind::Array && !type->constrained) {
+        if (m_currentSubprogram == nullptr) {
+            m_diagnostics.error(decl->location, "an unconstrained array object is currently supported only inside a subprogram");
+        } else if (decl->subtype->indexLows.empty() && !decl->initializer) {
+            m_diagnostics.error(decl->location, "an unconstrained array object needs an initializer or index constraint");
+        }
+    }
 
     // A discriminant is fixed when the object is declared, so the declaration
     // has to say what to fix it to.
@@ -3252,7 +3260,7 @@ Type* Sema::resolveTypeName(const std::string& lower, Scope* scope, const Source
     return symbol->type;
 }
 
-Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope)
+Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope, bool allowDynamic)
 {
     if (indication == nullptr) {
         return nullptr;
@@ -3324,6 +3332,17 @@ Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope
         if (indication->indexHighs.front()) {
             analyzeExpr(indication->indexHighs.front().get(), scope, array->index);
             ok = ok && foldStatic(indication->indexHighs.front().get(), high);
+        }
+        if (!ok && allowDynamic && indication->indexHighs.front() != nullptr) {
+            if (!isDiscrete(indication->indexLows.front()->type)
+                || !isDiscrete(indication->indexHighs.front()->type)) {
+                m_diagnostics.error(indication->location, "array index bounds must be discrete");
+                return base;
+            }
+            Type* subtype = m_types.makeSubtype(anonymousTypeName(), base, base->low, base->high);
+            subtype->constrained = false;
+            indication->resolved = subtype;
+            return subtype;
         }
         if (!ok) {
             m_diagnostics.error(indication->location, "index constraints must be static");

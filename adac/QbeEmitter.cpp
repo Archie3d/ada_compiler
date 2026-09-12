@@ -436,7 +436,16 @@ void QbeEmitter::finishFunction(const std::string& signature)
         }
     }
     text += context.prologue.str();
-    text += context.body.str();
+    // Allocations may occur in a branch emitted after an early return. Once
+    // the whole body is known, release the activation's list at every exit.
+    std::istringstream bodyLines(context.body.str());
+    std::string bodyLine;
+    while (std::getline(bodyLines, bodyLine)) {
+        if (!context.arrayArena.empty() && bodyLine.compare(0, 7, "    ret") == 0) {
+            text += "    call $__ada_array_release(l " + context.arrayArena + ")\n";
+        }
+        text += bodyLine + "\n";
+    }
     text += "}\n";
     m_functions.push_back(text);
 }
@@ -598,6 +607,124 @@ void QbeEmitter::emitMain()
 // Declarations inside a subprogram
 // ---------------------------------------------------------------------------
 
+void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
+{
+    Type* type = symbol->type;
+    Value bounds;
+    bool explicitBounds = !object->subtype->indexLows.empty();
+    if (explicitBounds) {
+        Value first = emitExpr(object->subtype->indexLows.front().get());
+        Value last = emitExpr(object->subtype->indexHighs.front().get());
+        emitRangeCheck(first, m_sema.typeTable().integerType(), object->location);
+        emitRangeCheck(last, m_sema.typeTable().integerType(), object->location);
+        bounds.first = first.name;
+        bounds.last = last.name;
+        std::string nonNull = newTemp();
+        line(nonNull + " =w csgew " + last.name + ", " + first.name);
+        std::string check = newLabel("checkbounds");
+        std::string ready = newLabel("boundsready");
+        branch(Value { nonNull, 'w' }, check, ready);
+        label(check);
+        emitRangeCheck(first, type->index, object->location);
+        emitRangeCheck(last, type->index, object->location);
+        jump(ready);
+        label(ready);
+    }
+    Value source;
+    bool aggregate = object->initializer && object->initializer->kind == ExprKind::Aggregate;
+    if (object->initializer && !aggregate) {
+        source = emitExpr(object->initializer.get());
+        if (!explicitBounds) {
+            bounds.first = source.first;
+            bounds.last = source.last;
+        }
+    }
+    if (!bounds.hasBounds()) {
+        m_diagnostics.error(object->location, "array object bounds cannot be inferred from this initializer");
+        return;
+    }
+    if (m_context->arrayArena.empty()) {
+        m_context->arrayArena = allocScratch(8);
+        m_context->prologue << "    storel 0, " << m_context->arrayArena << "\n";
+    }
+    std::string pointer = newTemp();
+    line(pointer + " =l call $__ada_array_local(l " + m_context->arrayArena + ", w " + bounds.first
+         + ", w " + bounds.last + ", l " + std::to_string(typeSize(type->element)) + ")");
+    emitExceptionCheck();
+    Value address { pointer, 'l', bounds.first, bounds.last };
+    if (symbol->isUplevel) {
+        m_context->frameSize = (m_context->frameSize + 7) & ~7LL;
+        symbol->frameOffset = m_context->frameSize;
+        m_context->frameSize += 16;
+        std::string slot = newTemp();
+        line(slot + " =l add " + m_context->frameTemp + ", " + std::to_string(symbol->frameOffset));
+        line("storel " + pointer + ", " + slot);
+        std::string firstSlot = newTemp();
+        std::string lastSlot = newTemp();
+        line(firstSlot + " =l add " + slot + ", 8");
+        line(lastSlot + " =l add " + slot + ", 12");
+        line("storew " + bounds.first + ", " + firstSlot);
+        line("storew " + bounds.last + ", " + lastSlot);
+    } else {
+        m_context->locals[symbol] = pointer;
+        m_context->bounds[symbol] = { bounds.first, bounds.last };
+    }
+    if (aggregate) {
+        assignInto(address, type, object->initializer.get());
+    } else if (object->initializer) {
+        Value length = lengthOf(address, type);
+        Value sourceLength = lengthOf(source, object->initializer->type);
+        std::string same = newTemp();
+        line(same + " =w ceqw " + length.name + ", " + sourceLength.name);
+        std::string ok = newLabel("initlengthok");
+        std::string bad = newLabel("initlengthbad");
+        branch(Value { same, 'w' }, ok, bad);
+        label(bad);
+        raiseConstraintError();
+        label(ok);
+        std::string wide = newTemp();
+        std::string size = newTemp();
+        line(wide + " =l extuw " + length.name);
+        line(size + " =l mul " + wide + ", " + std::to_string(typeSize(type->element)));
+        line("call $memmove(l " + pointer + ", l " + source.name + ", l " + size + ")");
+    } else if (hasComponentDefaults(type->element)) {
+        emitArrayFill(address, type, nullptr);
+    }
+}
+
+void QbeEmitter::emitArrayFill(const Value& address, Type* type, Expr* value)
+{
+    Value length = lengthOf(address, type);
+    std::string wideLength = newTemp();
+    line(wideLength + " =l extuw " + length.name);
+    std::string slot = allocScratch(8);
+    line("storel 0, " + slot);
+    std::string head = newLabel("arrayfill");
+    std::string body = newLabel("arrayfillbody");
+    std::string done = newLabel("arrayfilldone");
+    label(head);
+    std::string index = newTemp();
+    std::string test = newTemp();
+    line(index + " =l loadl " + slot);
+    line(test + " =w csltl " + index + ", " + wideLength);
+    branch(Value { test, 'w' }, body, done);
+    label(body);
+    std::string offset = newTemp();
+    std::string element = newTemp();
+    line(offset + " =l mul " + index + ", " + std::to_string(typeSize(type->element)));
+    line(element + " =l add " + address.name + ", " + offset);
+    if (value != nullptr) {
+        assignInto(Value { element, 'l' }, type->element, value);
+    } else {
+        emitDefaultInit(Value { element, 'l' }, type->element);
+    }
+    std::string next = newTemp();
+    line(next + " =l add " + index + ", 1");
+    line("storel " + next + ", " + slot);
+    jump(head);
+    label(done);
+}
+
 void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
 {
     for (const DeclPtr& decl : declarations) {
@@ -609,6 +736,10 @@ void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
             }
             for (Symbol* symbol : object->symbols) {
                 if (symbol->isGlobal) {
+                    continue;
+                }
+                if (isUnconstrainedArray(symbol->type)) {
+                    emitDynamicArray(object, symbol);
                     continue;
                 }
                 long long size = typeSize(symbol->type);
@@ -1051,32 +1182,30 @@ Value QbeEmitter::staticLinkFor(int targetLevel)
 Value QbeEmitter::addressOf(Symbol* symbol)
 {
     if (symbol->isGlobal) {
-        return Value { symbol->qbeName, 'l' };
+        return withBounds(Value { symbol->qbeName, 'l' }, symbol->type, symbol);
     }
-
-    if (symbol->owner == m_context->symbol) {
-        if (symbol->frameOffset >= 0) {
-            std::string address = newTemp();
-            line(address + " =l add " + m_context->frameTemp + ", " + std::to_string(symbol->frameOffset));
-            return Value { address, 'l' };
+    Value address;
+    if (symbol->frameOffset >= 0) {
+        Value frame = symbol->owner == m_context->symbol
+                          ? Value { m_context->frameTemp, 'l' }
+                          : staticLinkFor(symbol->owner->level);
+        address = Value { newTemp(), 'l' };
+        line(address.name + " =l add " + frame.name + ", " + std::to_string(symbol->frameOffset));
+        if ((symbol->kind == SymbolKind::Parameter && symbol->byReference)
+            || (symbol->kind == SymbolKind::Object && isUnconstrainedArray(symbol->type))) {
+            std::string pointer = newTemp();
+            line(pointer + " =l loadl " + address.name);
+            address.name = pointer;
         }
+    } else {
         auto it = m_context->locals.find(symbol);
-        if (it != m_context->locals.end()) {
-            return Value { it->second, 'l' };
+        if (it == m_context->locals.end()) {
+            m_diagnostics.error(symbol->location, "internal error: '" + symbol->displayName + "' has no storage");
+            return Value { "0", 'l' };
         }
-        m_diagnostics.error(symbol->location, "internal error: '" + symbol->displayName + "' has no storage");
-        return Value { "0", 'l' };
+        address = Value { it->second, 'l' };
     }
-
-    Value frame = staticLinkFor(symbol->owner != nullptr ? symbol->owner->level : 0);
-    std::string address = newTemp();
-    line(address + " =l add " + frame.name + ", " + std::to_string(symbol->frameOffset));
-    if (symbol->kind == SymbolKind::Parameter && symbol->byReference) {
-        std::string pointer = newTemp();
-        line(pointer + " =l loadl " + address);
-        return Value { pointer, 'l' };
-    }
-    return Value { address, 'l' };
+    return withBounds(address, symbol->type, symbol);
 }
 
 Value QbeEmitter::loadFrom(const Value& address, Type* type)
@@ -1112,7 +1241,22 @@ void QbeEmitter::assignInto(const Value& address, Type* type, Expr* value)
     }
     if (type != nullptr && type->kind == TypeKind::Array) {
         if (!type->constrained) {
-            m_diagnostics.error(value->location, "cannot assign to an unconstrained array object");
+            Value source = emitExpr(value);
+            Value targetLength = lengthOf(address, type);
+            Value sourceLength = lengthOf(source, value->type);
+            std::string same = newTemp();
+            line(same + " =w ceqw " + targetLength.name + ", " + sourceLength.name);
+            std::string ok = newLabel("lengthok");
+            std::string bad = newLabel("lengthbad");
+            branch(Value { same, 'w' }, ok, bad);
+            label(bad);
+            raiseConstraintError();
+            label(ok);
+            std::string wide = newTemp();
+            std::string size = newTemp();
+            line(wide + " =l extuw " + targetLength.name);
+            line(size + " =l mul " + wide + ", " + std::to_string(typeSize(type->element)));
+            line("call $memmove(l " + address.name + ", l " + source.name + ", l " + size + ")");
             return;
         }
         Value source = emitExpr(value);
@@ -1429,6 +1573,29 @@ Value QbeEmitter::emitAddress(Expr* expr)
                                        ? std::to_string(array->indexLow)
                                        : (base.hasBounds() ? base.first : std::string("1"));
 
+            if (!array->constrained && base.hasBounds()) {
+                std::string wideIndex = index.name;
+                if (index.type != 'l') {
+                    wideIndex = newTemp();
+                    line(wideIndex + " =l extsw " + index.name);
+                }
+                std::string first = newTemp();
+                std::string last = newTemp();
+                line(first + " =l extsw " + base.first);
+                line(last + " =l extsw " + base.last);
+                std::string low = newTemp();
+                std::string high = newTemp();
+                std::string valid = newTemp();
+                line(low + " =w csgel " + wideIndex + ", " + first);
+                line(high + " =w cslel " + wideIndex + ", " + last);
+                line(valid + " =w and " + low + ", " + high);
+                std::string ok = newLabel("indexok");
+                std::string bad = newLabel("indexbad");
+                branch(Value { valid, 'w' }, ok, bad);
+                label(bad);
+                raiseConstraintError();
+                label(ok);
+            }
             std::string offset = newTemp();
             line(offset + " =w sub " + index.name + ", " + lowBound);
             std::string wide = newTemp();
@@ -2747,6 +2914,15 @@ void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Ty
     }
 
     long long elementSize = typeSize(target->element);
+    if (!target->constrained) {
+        if (!address.hasBounds() || expr->components.size() != 1 || !expr->components.front().isOthers) {
+            m_diagnostics.error(expr->location, "a runtime-bounded array aggregate currently requires only others");
+            return;
+        }
+        emitArrayFill(address, target, expr->components.front().value.get());
+        return;
+    }
+
     long long position = target->indexLow;
     AggregateComponent* others = nullptr;
 

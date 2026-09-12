@@ -168,12 +168,28 @@ sizes, signed small representations, invalid size clauses, and unsupported impor
 
 ### Dynamic arrays and constraints
 
-- [ ] Runtime scalar subtype bounds and array index constraints, such as
-  `Buffer : String (1 .. N)` where `N` is a parameter.
-- [ ] A consistent descriptor for data address, bounds, lengths, and element
-  strides; use it in calls, slices, results, assignment, and attributes.
-- [ ] Runtime storage allocation/reclamation for local arrays and temporaries,
-  including null ranges and checked size computations.
+- [x] Runtime one-dimensional constraints on local objects, such as
+  `Buffer : String (1 .. N)`, and initializer-constrained local objects such as
+  `Text : String := Make_Text`. Includes null ranges, `others` aggregates,
+  component defaults, grouped initialization, assignment, and indexing checks.
+  Covered by `dynamicarrays.adb`, `dynamicarrayvalues.adb`, and
+  `dynamicarrayfailures.adb`.
+- [x] Local arrays carry a data pointer and signed 32-bit bounds, matching
+  unconstrained parameters and captured frame slots. Length is derived and
+  element stride is static; descriptors survive calls, slices, results, and
+  attributes. Captured reference parameters now load their pointer in their
+  owning function as well as nested functions.
+- [x] Allocate local array data with checked sizes and release all allocations
+  on every enclosing function exit, including exception propagation. Reject
+  lengths beyond `Integer'Last` with `Storage_Error`.
+- [ ] Reclaim local arrays at block exit and unify temporary ownership; repeated
+  block entries currently retain allocations until the enclosing call exits.
+- [ ] Runtime scalar/named subtype bounds and library-level dynamic arrays.
+  Unsupported cases have diagnostics in `dynamicarrayerrors.adb`.
+- [ ] Positional/named aggregates with runtime bounds and inference of bounds
+  from unconstrained aggregates (`dynamicaggregateerrors.adb`).
+- [ ] Generalize descriptors to wider indices and per-dimension strides before
+  extending the remaining array operations.
 - [ ] General one-dimensional array concatenation, including element/array
   combinations. Concatenation is currently specialized to character arrays.
 
@@ -299,4 +315,4 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: dynamic array descriptors; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: dynamic array scope/temporary reclamation; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.

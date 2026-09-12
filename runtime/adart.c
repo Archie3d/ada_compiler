@@ -430,3 +430,50 @@ void __ada_array_result(void* descriptor, const void* source, int first, int las
     }
     memcpy((char*)descriptor + 16, &size, sizeof size);
 }
+
+/* Per-activation ownership of local dynamic arrays. Keep allocations linked
+   until the activation returns, including propagation and early returns. */
+typedef struct AdaArrayAllocation
+{
+    struct AdaArrayAllocation* next;
+    void* data;
+} AdaArrayAllocation;
+
+void* __ada_array_local(void** owner, int first, int last, int64_t elementSize)
+{
+    int64_t length = last < first ? 0 : (int64_t)last - first + 1;
+    AdaArrayAllocation* allocation;
+    size_t size;
+    if (length > INT_MAX || elementSize < 0
+        || (elementSize != 0 && (uint64_t)length > SIZE_MAX / (uint64_t)elementSize)) {
+        __ada_raise(ADA_STORAGE_ERROR);
+        return NULL;
+    }
+    size = (size_t)length * (size_t)elementSize;
+    allocation = malloc(sizeof *allocation);
+    if (allocation == NULL) {
+        __ada_raise(ADA_STORAGE_ERROR);
+        return NULL;
+    }
+    allocation->data = calloc(1, size == 0 ? 1 : size);
+    if (allocation->data == NULL) {
+        free(allocation);
+        __ada_raise(ADA_STORAGE_ERROR);
+        return NULL;
+    }
+    allocation->next = *owner;
+    *owner = allocation;
+    return allocation->data;
+}
+
+void __ada_array_release(void** owner)
+{
+    AdaArrayAllocation* allocation = *owner;
+    while (allocation != NULL) {
+        AdaArrayAllocation* next = allocation->next;
+        free(allocation->data);
+        free(allocation);
+        allocation = next;
+    }
+    *owner = NULL;
+}
