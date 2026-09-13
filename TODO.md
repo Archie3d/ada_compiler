@@ -190,8 +190,14 @@ sizes, signed small representations, invalid size clauses, and unsupported impor
   checkpointed allocation lists (`arraylifetimes.adb`).
 - [ ] Runtime scalar/named subtype bounds and library-level dynamic arrays.
   Unsupported cases have diagnostics in `dynamicarrayerrors.adb`.
-- [ ] Positional/named aggregates with runtime bounds and inference of bounds
-  from unconstrained aggregates (`dynamicaggregateerrors.adb`).
+- [x] Positional/named aggregates with runtime target bounds, including a final
+  `others`, static choice lists/ranges, and a single dynamic choice/range.
+  Check lengths and choices; slide named aggregates without `others`; evaluate
+  components into temporary storage before replacing the target. Dynamic choices
+  also work with static target constraints. Covered by `runtimeaggregates.adb`,
+  `runtimeaggregatechecks.adb`, and `dynamicaggregateerrors.adb`.
+- [ ] Infer bounds from unconstrained aggregates, including returned aggregates
+  and initializer-constrained objects (`returnerrors.adb` remains a diagnostic).
 - [ ] Generalize descriptors to wider indices and per-dimension strides before
   extending the remaining array operations.
 - [ ] General one-dimensional array concatenation, including element/array
@@ -319,4 +325,4 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: runtime-bounded array aggregates; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: unconstrained aggregate bound inference; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.

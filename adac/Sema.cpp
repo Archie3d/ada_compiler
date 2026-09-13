@@ -2927,6 +2927,10 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
         return expr->type;
     }
 
+    bool hasNamed = false;
+    bool hasPositional = false;
+    bool hasOthers = false;
+    std::vector<std::pair<long long, long long>> staticChoices;
     for (AggregateComponent& component : expr->components) {
         for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
             analyzeExpr(component.choiceLows[i].get(), scope, target->index);
@@ -2938,8 +2942,70 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
                                target->index != nullptr ? target->index : m_types.integerType());
             }
         }
-        analyzeExpr(component.value.get(), scope, target->element);
+        Type* valueType = analyzeExpr(component.value.get(), scope, target->element);
+        if (!typesCompatible(target->element, valueType)) {
+            m_diagnostics.error(component.value->location, "aggregate component has an incompatible type");
+        }
         adaptUniversal(component.value.get(), target->element);
+    }
+    for (std::size_t c = 0; c < expr->components.size(); ++c) {
+        AggregateComponent& component = expr->components[c];
+        if (component.isOthers) {
+            if (hasOthers || c + 1 != expr->components.size()) {
+                m_diagnostics.error(component.value->location, "others must appear once, as the final aggregate association");
+            }
+            hasOthers = true;
+            continue;
+        }
+        if (component.choiceLows.empty()) {
+            hasPositional = true;
+            continue;
+        }
+        hasNamed = true;
+        for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
+            long long low = 0;
+            long long high = 0;
+            bool known = foldStatic(component.choiceLows[i].get(), low);
+            if (component.choiceHighs[i]) {
+                known = foldStatic(component.choiceHighs[i].get(), high) && known;
+            } else {
+                high = low;
+            }
+            if (!isDiscrete(component.choiceLows[i]->type)
+                || !typesCompatible(target->index, component.choiceLows[i]->type)
+                || (component.choiceHighs[i] && (!isDiscrete(component.choiceHighs[i]->type)
+                    || !typesCompatible(target->index, component.choiceHighs[i]->type)))) {
+                m_diagnostics.error(component.choiceLows[i]->location, "aggregate choice is incompatible with the index type");
+            }
+            if ((!known || high < low)
+                && (expr->components.size() != 1 || component.choiceLows.size() != 1)) {
+                m_diagnostics.error(component.choiceLows[i]->location,
+                    "a dynamic or null aggregate choice must be the only choice");
+            }
+            if (known) {
+                component.choiceLows[i]->staticValue = low;
+                if (component.choiceHighs[i]) {
+                    component.choiceHighs[i]->staticValue = high;
+                }
+                if (high >= low) {
+                    staticChoices.emplace_back(low, high);
+                }
+            }
+        }
+    }
+    if (hasNamed && hasPositional) {
+        m_diagnostics.error(expr->location, "positional and named array associations cannot be mixed");
+    }
+    std::sort(staticChoices.begin(), staticChoices.end());
+    for (std::size_t i = 1; i < staticChoices.size(); ++i) {
+        if (staticChoices[i].first <= staticChoices[i - 1].second) {
+            m_diagnostics.error(expr->location, "array aggregate choices overlap");
+            break;
+        }
+        if (!hasOthers && staticChoices[i].first - 1 != staticChoices[i - 1].second) {
+            m_diagnostics.error(expr->location, "array aggregate choices must cover a contiguous range");
+            break;
+        }
     }
     expr->type = expected;
     return expr->type;

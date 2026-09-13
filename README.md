@@ -203,8 +203,17 @@ Copy   : String := Make_Text;
 The object keeps its bounds for its lifetime. Assignment checks lengths and
 slides the source to the target bounds; indexing checks runtime bounds. Bounds
 also travel through slices, function results, calls, and captured variables.
-`others` aggregates and component defaults are evaluated per element. Grouped
-object declarations evaluate an initializer separately for each object.
+Runtime-bounded aggregates support positional elements, a final `others`, named
+index choices and ranges, and a single dynamic range choice. Named aggregates
+without `others` keep their own bounds and slide to the target after a length
+check. Components are evaluated per element in temporary storage before the
+completed value is copied to the target, so self-references read the old value
+and a failed component evaluation leaves the target unchanged. Dynamic choice
+bounds are evaluated once. A dynamic or null range must be the aggregate's only
+choice, following the [Ada array aggregate rules](https://docs.adacore.com/live/wave/arm95/html/arm95/arm95-4-3-3.html).
+Overlapping or noncontiguous static named choices and mixed positional/named
+associations are diagnosed. Component defaults are also evaluated per element;
+grouped declarations evaluate an initializer separately for each object.
 
 Dynamic local array data uses heap storage released when its block finishes,
 on labelled loop exits, or when an exception leaves the scope. A block's locals
@@ -213,7 +222,7 @@ block fails. Function returns release remaining local and temporary allocations.
 This implementation uses signed 32-bit bounds,
 limits lengths to `Integer'Last`, checks allocation sizes, and raises
 `Storage_Error` on allocation failure. Runtime named subtype constraints,
-library-level dynamic objects, and positional/named runtime-bounded aggregates
+library-level dynamic objects, and inference of unconstrained aggregate bounds
 remain unsupported.
 
 Floating point types are declared with `digits`, optionally with a range:

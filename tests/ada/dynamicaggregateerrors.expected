@@ -1,1 +1,4 @@
-dynamicaggregateerrors.adb:4:36: error: a runtime-bounded array aggregate currently requires only others
+dynamicaggregateerrors.adb:4:35: error: positional and named array associations cannot be mixed
+dynamicaggregateerrors.adb:5:39: error: array aggregate choices overlap
+dynamicaggregateerrors.adb:6:33: error: array aggregate choices must cover a contiguous range
+dynamicaggregateerrors.adb:7:38: error: a dynamic or null aggregate choice must be the only choice

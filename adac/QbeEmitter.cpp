@@ -2951,6 +2951,173 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
     return Value { "0", 'w' };
 }
 
+void QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type)
+{
+    if (!address.hasBounds()) {
+        m_diagnostics.error(expr->location, "array aggregate requires bounds from its context");
+        return;
+    }
+    struct Choice
+    {
+        std::string low;
+        std::string high;
+        Expr* value;
+    };
+    std::vector<Choice> choices;
+    Expr* others = nullptr;
+    bool named = false;
+    long long position = 0;
+    auto widen = [&](const Value& value) {
+        if (value.type == 'l') {
+            return value.name;
+        }
+        std::string result = newTemp();
+        line(result + " =l extsw " + value.name);
+        return result;
+    };
+    std::string first = widen(Value { address.first, 'w' });
+    std::string last = widen(Value { address.last, 'w' });
+    for (AggregateComponent& component : expr->components) {
+        if (component.isOthers) {
+            others = component.value.get();
+        } else if (component.choiceLows.empty()) {
+            std::string index = newTemp();
+            line(index + " =l add " + first + ", " + std::to_string(position++));
+            choices.push_back({ index, index, component.value.get() });
+        } else {
+            named = true;
+            for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
+                Value lowValue = emitExpr(component.choiceLows[i].get());
+                emitRangeCheck(lowValue, m_sema.typeTable().integerType(), component.choiceLows[i]->location);
+                std::string low = widen(lowValue);
+                std::string high = low;
+                if (component.choiceHighs[i]) {
+                    Value highValue = emitExpr(component.choiceHighs[i].get());
+                    emitRangeCheck(highValue, m_sema.typeTable().integerType(), component.choiceHighs[i]->location);
+                    high = widen(highValue);
+                }
+                choices.push_back({ low, high, component.value.get() });
+            }
+        }
+    }
+    // Named aggregates without others have their own bounds, then slide to
+    // the target. Sema verifies static choices are contiguous and disjoint.
+    if (named && others == nullptr && !choices.empty()) {
+        first = choices.front().low;
+        last = choices.front().high;
+        if (choices.size() > 1) {
+            long long low = std::numeric_limits<long long>::max();
+            long long high = std::numeric_limits<long long>::min();
+            for (AggregateComponent& component : expr->components) {
+                for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
+                    low = std::min(low, component.choiceLows[i]->staticValue);
+                    high = std::max(high, component.choiceHighs[i]
+                        ? component.choiceHighs[i]->staticValue : component.choiceLows[i]->staticValue);
+                }
+            }
+            first = std::to_string(low);
+            last = std::to_string(high);
+        }
+    } else if (!named && others == nullptr) {
+        last = newTemp();
+        line(last + " =l add " + first + ", " + std::to_string(position - 1));
+    }
+    Value length = lengthOf(address, type);
+    std::string wideLength = newTemp();
+    line(wideLength + " =l extuw " + length.name);
+    // Check size and explicit choices before evaluating any component value.
+    auto require = [&](const std::string& condition) {
+        std::string good = newLabel("aggregateok");
+        std::string bad = newLabel("aggregatebad");
+        branch(Value { condition, 'w' }, good, bad);
+        label(bad);
+        raiseConstraintError();
+        label(good);
+    };
+    std::string span = newTemp();
+    std::string count = newTemp();
+    std::string nonNull = newTemp();
+    std::string normalized = newTemp();
+    std::string same = newTemp();
+    line(span + " =l sub " + last + ", " + first);
+    line(count + " =l add " + span + ", 1");
+    line(nonNull + " =w csgel " + last + ", " + first);
+    std::string flag = newTemp();
+    line(flag + " =l extuw " + nonNull);
+    line(normalized + " =l mul " + count + ", " + flag);
+    line(same + " =w ceql " + normalized + ", " + wideLength);
+    require(same);
+    if (others != nullptr) {
+        for (const Choice& choice : choices) {
+            std::string low = newTemp();
+            std::string high = newTemp();
+            std::string valid = newTemp();
+            line(low + " =w csgel " + choice.low + ", " + first);
+            line(high + " =w cslel " + choice.high + ", " + last);
+            line(valid + " =w and " + low + ", " + high);
+            require(valid);
+        }
+    }
+    std::string buffer = newTemp();
+    line(buffer + " =l call $__ada_array_local(l " + storageArena(true, true)
+         + ", w " + address.first + ", w " + address.last + ", l "
+         + std::to_string(typeSize(type->element)) + ")");
+    emitExceptionCheck();
+    std::string slot = allocScratch(8);
+    line("storel 0, " + slot);
+    std::string head = newLabel("aggregatefill");
+    std::string body = newLabel("aggregatebody");
+    std::string next = newLabel("aggregatenext");
+    std::string done = newLabel("aggregatedone");
+    label(head);
+    std::string offset = newTemp();
+    std::string test = newTemp();
+    line(offset + " =l loadl " + slot);
+    line(test + " =w csltl " + offset + ", " + wideLength);
+    branch(Value { test, 'w' }, body, done);
+    label(body);
+    std::string index = newTemp();
+    std::string scaled = newTemp();
+    std::string element = newTemp();
+    line(index + " =l add " + first + ", " + offset);
+    line(scaled + " =l mul " + offset + ", " + std::to_string(typeSize(type->element)));
+    line(element + " =l add " + buffer + ", " + scaled);
+    auto fill = [&](Expr* value) {
+        auto checkpoint = storageCheckpoint();
+        assignInto(Value { element, 'l' }, type->element, value);
+        rewindStorage(checkpoint);
+        jump(next);
+    };
+    for (const Choice& choice : choices) {
+        std::string low = newTemp();
+        std::string high = newTemp();
+        std::string match = newTemp();
+        line(low + " =w csgel " + index + ", " + choice.low);
+        line(high + " =w cslel " + index + ", " + choice.high);
+        line(match + " =w and " + low + ", " + high);
+        std::string selected = newLabel("aggregatechoice");
+        std::string following = newLabel("aggregatechoice_next");
+        branch(Value { match, 'w' }, selected, following);
+        label(selected);
+        fill(choice.value);
+        label(following);
+    }
+    if (others != nullptr) {
+        fill(others);
+    } else {
+        raiseConstraintError();
+    }
+    label(next);
+    std::string incremented = newTemp();
+    line(incremented + " =l add " + offset + ", 1");
+    line("storel " + incremented + ", " + slot);
+    jump(head);
+    label(done);
+    std::string size = newTemp();
+    line(size + " =l mul " + wideLength + ", " + std::to_string(typeSize(type->element)));
+    line("call $memmove(l " + address.name + ", l " + buffer + ", l " + size + ")");
+}
+
 void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Type* type)
 {
     Type* target = type;
@@ -2978,12 +3145,15 @@ void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Ty
     }
 
     long long elementSize = typeSize(target->element);
-    if (!target->constrained) {
-        if (!address.hasBounds() || expr->components.size() != 1 || !expr->components.front().isOthers) {
-            m_diagnostics.error(expr->location, "a runtime-bounded array aggregate currently requires only others");
-            return;
+    bool dynamicChoice = false;
+    for (const AggregateComponent& component : expr->components) {
+        for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
+            dynamicChoice = dynamicChoice || !component.choiceLows[i]->isStatic
+                || (component.choiceHighs[i] && !component.choiceHighs[i]->isStatic);
         }
-        emitArrayFill(address, target, expr->components.front().value.get());
+    }
+    if (!target->constrained || dynamicChoice) {
+        emitDynamicAggregateInto(expr, withBounds(address, target, nullptr), target);
         return;
     }
 
