@@ -4,10 +4,10 @@
 #include "Parser.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cctype>
 #include <cfloat>
 #include <limits>
-
 namespace
 {
 
