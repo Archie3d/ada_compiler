@@ -1,3 +1,3 @@
-genericerrors.adb:29:39: error: 'Width' is not a type
-genericerrors.adb:30:4: error: no actual supplied for generic formal 'Item'
-genericerrors.adb:31:4: error: 'Missing' is not a generic unit
+genericerrors.adb:29:40: error: 'Width' is not a type
+genericerrors.adb:30:5: error: no actual supplied for generic formal 'Item'
+genericerrors.adb:31:5: error: 'Missing' is not a generic unit

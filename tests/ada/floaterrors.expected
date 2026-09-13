@@ -1,8 +1,8 @@
-floaterrors.adb:5:21: error: a floating point type supports 1 to 15 digits
-floaterrors.adb:6:25: error: the bounds of a floating point type must be real
-floaterrors.adb:8:23: error: initial value is not compatible with the declared subtype
-floaterrors.adb:12:11: error: 'mod' and 'rem' require integer operands
-floaterrors.adb:13:11: error: the operands of an arithmetic operator must have the same type
-floaterrors.adb:14:14: error: the exponent of '**' must be an integer
-floaterrors.adb:15:11: error: the operands of an arithmetic operator must have the same type
-floaterrors.adb:16:16: error: 'Digits requires a floating point prefix
+floaterrors.adb:5:22: error: a floating point type supports 1 to 15 digits
+floaterrors.adb:6:26: error: the bounds of a floating point type must be real
+floaterrors.adb:8:24: error: initial value is not compatible with the declared subtype
+floaterrors.adb:12:12: error: 'mod' and 'rem' require integer operands
+floaterrors.adb:13:12: error: the operands of an arithmetic operator must have the same type
+floaterrors.adb:14:15: error: the exponent of '**' must be an integer
+floaterrors.adb:15:12: error: the operands of an arithmetic operator must have the same type
+floaterrors.adb:16:17: error: 'Digits requires a floating point prefix

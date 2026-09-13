@@ -4,33 +4,33 @@
 
 package Piles is
 
-   Depth : constant := 8;
+    Depth : constant := 8;
 
-   type Pile is private;
+    type Pile is private;
 
-   -- Named here without a value, which the private part supplies once the
-   -- representation is known.
-   Empty : constant Pile;
+    -- Named here without a value, which the private part supplies once the
+    -- representation is known.
+    Empty : constant Pile;
 
-   Overflow  : exception;
-   Underflow : exception;
+    Overflow  : exception;
+    Underflow : exception;
 
-   procedure Push (P : in out Pile; Value : in Integer);
-   procedure Pop (P : in out Pile; Value : out Integer);
+    procedure Push (P : in out Pile; Value : in Integer);
+    procedure Pop (P : in out Pile; Value : out Integer);
 
-   function Size (P : in Pile) return Integer;
-   function Is_Empty (P : in Pile) return Boolean;
+    function Size (P : in Pile) return Integer;
+    function Is_Empty (P : in Pile) return Boolean;
 
 private
 
-   type Contents is array (1 .. Depth) of Integer;
+    type Contents is array (1 .. Depth) of Integer;
 
-   type Pile is
-      record
-         Items : Contents;
-         Top   : Integer := 0;
-      end record;
+    type Pile is
+        record
+            Items : Contents;
+            Top   : Integer := 0;
+        end record;
 
-   Empty : constant Pile := (Items => (others => 0), Top => 0);
+    Empty : constant Pile := (Items => (others => 0), Top => 0);
 
 end Piles;

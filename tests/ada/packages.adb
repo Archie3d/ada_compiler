@@ -6,18 +6,18 @@ use Ada.Integer_Text_IO;
 
 procedure Packages is
 begin
-   Put ("start:");
-   Put (Counters.Value, 5);
-   New_Line;
+    Put ("start:");
+    Put (Counters.Value, 5);
+    New_Line;
 
-   Counters.Bump (5);
-   Counters.Bump (7);
-   Put ("bumped:");
-   Put (Counters.Value, 5);
-   New_Line;
+    Counters.Bump (5);
+    Counters.Bump (7);
+    Put ("bumped:");
+    Put (Counters.Value, 5);
+    New_Line;
 
-   Counters.Reset;
-   Put ("reset:");
-   Put (Counters.Value, 5);
-   New_Line;
+    Counters.Reset;
+    Put ("reset:");
+    Put (Counters.Value, 5);
+    New_Line;
 end Packages;

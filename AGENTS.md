@@ -5,7 +5,7 @@ alwaysApply: false
 ---
 
 # Code style
-- Use 4 spaces indentation.
+- Use 4 spaces indentation (for C, C++, and Ada code)
 - Functions code open with curly brace on the a line:
 ```cpp
 void func()
