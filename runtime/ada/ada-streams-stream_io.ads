@@ -69,7 +69,6 @@ package Ada.Streams.Stream_IO is
     procedure Read (File : in File_Type;
                     Item : out Stream_Element_Array;
                     Last : out Stream_Element_Offset);
-    pragma Import (C, Read, "__ada_stream_elements_read");
 
     procedure Write (File : in File_Type; Item : in Stream_Element_Array);
     pragma Import (C, Write, "__ada_stream_elements_write");

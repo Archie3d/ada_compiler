@@ -58,6 +58,8 @@ private:
     std::vector<std::string> parseIdentifierList(std::vector<std::string>& lowered);
     std::string parseCompoundName(std::string& lowered);
 
+    void parseClosingName(const std::string& lower, bool allowSimpleName = false);
+
     // Statements.
     StmtList parseSequenceOfStatements();
     std::vector<ExceptionHandler> parseExceptionHandlers();

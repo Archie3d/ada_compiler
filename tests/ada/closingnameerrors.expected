@@ -1,0 +1,6 @@
+closingnameerrors.adb:3:9: error: closing name 'Wrong_Spec' does not match 'inner'
+closingnameerrors.adb:5:9: error: closing name 'Wrong_Body' does not match 'inner'
+closingnameerrors.adb:9:9: error: closing name 'Wrong_Procedure' does not match 'nested'
+closingnameerrors.adb:13:14: error: closing name 'Wrong_Loop' does not match 'named_loop'
+closingnameerrors.adb:18:9: error: closing name 'Wrong_Block' does not match 'named_block'
+closingnameerrors.adb:19:5: error: closing name 'Other_Name' does not match 'closingnameerrors'

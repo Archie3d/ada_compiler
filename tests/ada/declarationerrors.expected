@@ -1,0 +1,3 @@
+declarationerrors.adb:3:9: error: 'Missing' is never described
+declarationerrors.adb:4:9: error: 'Value' is never given a value
+declarationerrors.adb:6:5: error: 'Unfinished' is never described

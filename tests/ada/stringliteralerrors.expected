@@ -1,0 +1,3 @@
+stringliteralerrors.adb:2:22: error: unterminated string literal
+stringliteralerrors.adb:3:1: error: expected ';' after object declaration, found 'begin'
+stringliteralerrors.adb:5:1: error: expected 'begin' in subprogram body, found 'end'

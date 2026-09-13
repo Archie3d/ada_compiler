@@ -1130,7 +1130,7 @@ void* __ada_stream_read_array(AdaFile* stream, int elementSize, int* first, int*
 
 /* Read and Write over a Stream_Element_Array work in bytes, since a stream
    element is one byte wide. */
-void __ada_stream_elements_read(AdaFileRef handle, void* item, int length, int* last)
+void __ada_stream_elements_read(AdaFileRef handle, void* item, int length, int first, int* last)
 {
     AdaFile* file = __ada_file_checked(handle, ADA_MODE_IN);
     size_t got;
@@ -1140,7 +1140,10 @@ void __ada_stream_elements_read(AdaFileRef handle, void* item, int length, int* 
         return;
     }
     got = fread(item, 1, (size_t)length, file->stream);
-    *last = (int)got;
+    *last = (int)((long long)first + (long long)got - 1);
+    if (ferror(file->stream)) {
+        __ada_raise(ADA_DEVICE_ERROR);
+    }
 }
 
 void __ada_stream_elements_write(AdaFileRef handle, const void* item, int length)

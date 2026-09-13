@@ -18,6 +18,9 @@ execute_process(
 if(status EQUAL 0)
     message(FATAL_ERROR "adac accepted ${NAME}, which is meant to be rejected")
 endif()
+if(NOT "${status}" MATCHES "^[1-9][0-9]*$" OR errors STREQUAL "")
+    message(FATAL_ERROR "adac failed without a normal diagnostic: ${status}\n${output}${errors}")
+endif()
 
 # A diagnostic names the file the way it was given on the command line.
 foreach(source ${source_list})

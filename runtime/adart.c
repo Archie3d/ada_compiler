@@ -125,6 +125,43 @@ static void trim(const char* text, int length, int* from, int* to)
     *to = stop;
 }
 
+/* Read a numeral without losing overflow or separator errors. The caller
+   handles delimiters and requires that the complete input is consumed. */
+static int readValueNumeral(const char* text, int stop, int* position, unsigned base,
+                            unsigned long long limit, unsigned long long* value)
+{
+    int hasDigit = 0;
+    int separator = 0;
+
+    *value = 0;
+    while (*position < stop) {
+        unsigned char c = (unsigned char)text[*position];
+        unsigned digit;
+        if (c == '_') {
+            if (!hasDigit || separator) {
+                return 0;
+            }
+            separator = 1;
+            ++*position;
+            continue;
+        }
+        digit = c >= '0' && c <= '9' ? (unsigned)(c - '0')
+                : c >= 'a' && c <= 'f' ? (unsigned)(c - 'a' + 10)
+                : c >= 'A' && c <= 'F' ? (unsigned)(c - 'A' + 10) : 16;
+        if (digit >= base) {
+            break;
+        }
+        if (digit > limit || *value > (limit - digit) / base) {
+            return 0;
+        }
+        *value = *value * base + digit;
+        hasDigit = 1;
+        separator = 0;
+        ++*position;
+    }
+    return hasDigit && !separator;
+}
+
 long long __ada_value_long_integer(const char* text, int length, long long low, long long high)
 {
     int start;
@@ -141,25 +178,70 @@ long long __ada_value_long_integer(const char* text, int length, long long low, 
         ++start;
     }
     limit = (unsigned long long)LLONG_MAX + negative;
-    if (start == stop) {
-        __ada_raise(ADA_CONSTRAINT_ERROR);
-        return low;
+    i = start;
+    if (!readValueNumeral(text, stop, &i, 10, limit, &value)) {
+        goto invalid;
     }
-    for (i = start; i < stop; ++i) {
-        unsigned digit = (unsigned)(text[i] - '0');
-        if (digit > 9 || value > (limit - digit) / 10) {
-            __ada_raise(ADA_CONSTRAINT_ERROR);
-            return low;
+    unsigned base = 10;
+    if (i < stop && text[i] == '#') {
+        if (value < 2 || value > 16) {
+            goto invalid;
         }
-        value = value * 10 + digit;
+        base = (unsigned)value;
+        ++i;
+        if (!readValueNumeral(text, stop, &i, base, limit, &value)
+            || i == stop || text[i] != '#') {
+            goto invalid;
+        }
+        ++i;
+    }
+    if (i < stop && (text[i] == 'e' || text[i] == 'E')) {
+        unsigned long long exponent = 0;
+        ++i;
+        if (i < stop && text[i] == '+') {
+            ++i;
+        }
+        // Saturate the exponent: no nonzero 64-bit value can survive 64
+        // multiplications, but zero remains valid even for huge exponents.
+        int exponentStart = i;
+        int separator = 0;
+        for (; i < stop; ++i) {
+            if (text[i] == '_' && i > exponentStart && !separator) {
+                separator = 1;
+                continue;
+            }
+            if (text[i] < '0' || text[i] > '9') {
+                goto invalid;
+            }
+            separator = 0;
+            if (exponent < 64) {
+                exponent = exponent * 10 + (unsigned)(text[i] - '0');
+            }
+        }
+        if (i == exponentStart || separator) {
+            goto invalid;
+        }
+        while (value != 0 && exponent != 0) {
+            if (value > limit / base) {
+                goto invalid;
+            }
+            value *= base;
+            --exponent;
+        }
+    }
+    if (i != stop) {
+        goto invalid;
     }
     result = negative ? (value == (unsigned long long)LLONG_MAX + 1 ? LLONG_MIN : -(long long)value)
                       : (long long)value;
     if (result < low || result > high) {
-        __ada_raise(ADA_CONSTRAINT_ERROR);
-        return low;
+        goto invalid;
     }
     return result;
+
+invalid:
+    __ada_raise(ADA_CONSTRAINT_ERROR);
+    return low;
 }
 
 int __ada_value_integer(const char* text, int length, int low, int high)

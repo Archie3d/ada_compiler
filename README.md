@@ -16,10 +16,16 @@ A compiler driver is provided. This executes all the steps of the compilation to
 ```shell
 cmake -S . -B build
 cmake --build build
-ctest --test-dir build
+ctest --test-dir build --output-on-failure
 ```
 The build also compiles the vendored `qbe` submodule into `build/qbe/qbe`, and
 the C run time into `build/runtime/libadart.a`.
+
+The main CTest suite includes executable Ada regressions, compiler diagnostic
+checks, a QBE IR comparison, and runtime and driver checks. Ada fixtures and
+their `.expected` files live in `tests/ada/` and are registered in
+`tests/CMakeLists.txt`. To run a single case, use, for example,
+`ctest --test-dir build -R '^ada.sliceassignment$' --output-on-failure`.
 
 ### Building on Windows
 When compiling on Windows use [Msys2](https://www.msys2.org/) environment.

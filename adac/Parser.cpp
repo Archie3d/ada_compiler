@@ -881,14 +881,26 @@ DeclPtr Parser::parseSubprogramDeclOrBody()
         body->handlers = parseExceptionHandlers();
     }
     expect(TokenKind::KwEnd, "at end of subprogram body");
-    if (check(TokenKind::Identifier)) {
-        std::string repeated;
-        parseCompoundName(repeated);
-    }
+    parseClosingName(body->spec.lower, true);
     expect(TokenKind::Semicolon, "after subprogram body");
     body->tokens.assign(m_tokens.begin() + static_cast<std::ptrdiff_t>(start),
                         m_tokens.begin() + static_cast<std::ptrdiff_t>(m_position));
     return body;
+}
+
+void Parser::parseClosingName(const std::string& lower, bool allowSimpleName)
+{
+    if (!check(TokenKind::Identifier)) {
+        return;
+    }
+    SourceLocation location = current().location;
+    std::string repeated;
+    std::string name = parseCompoundName(repeated);
+    std::size_t dot = lower.rfind('.');
+    bool simpleName = allowSimpleName && dot != std::string::npos && repeated == lower.substr(dot + 1);
+    if (lower.empty() || (repeated != lower && !simpleName)) {
+        m_diagnostics.error(location, "closing name '" + name + "' does not match '" + lower + "'");
+    }
 }
 
 DeclPtr Parser::parsePackage()
@@ -912,9 +924,7 @@ DeclPtr Parser::parsePackage()
             }
         }
         expect(TokenKind::KwEnd, "at end of package body");
-        if (check(TokenKind::Identifier)) {
-            parseCompoundName(body->lower);
-        }
+        parseClosingName(body->lower, true);
         expect(TokenKind::Semicolon, "after package body");
         body->tokens.assign(m_tokens.begin() + static_cast<std::ptrdiff_t>(start),
                             m_tokens.begin() + static_cast<std::ptrdiff_t>(m_position));
@@ -933,10 +943,7 @@ DeclPtr Parser::parsePackage()
         spec->privatePart = parseDeclarativePart();
     }
     expect(TokenKind::KwEnd, "at end of package specification");
-    if (check(TokenKind::Identifier)) {
-        std::string ignored;
-        parseCompoundName(ignored);
-    }
+    parseClosingName(spec->lower, true);
     expect(TokenKind::Semicolon, "after package specification");
     return spec;
 }
@@ -1296,9 +1303,7 @@ StmtPtr Parser::parseLoopStatement(const std::string& label)
     statement->body = parseSequenceOfStatements();
     expect(TokenKind::KwEnd, "at end of loop");
     expect(TokenKind::KwLoop, "at end of loop");
-    if (check(TokenKind::Identifier)) {
-        advance();
-    }
+    parseClosingName(toLower(label));
     expect(TokenKind::Semicolon, "after loop statement");
     return statement;
 }
@@ -1318,9 +1323,7 @@ StmtPtr Parser::parseBlockStatement(const std::string& label)
         statement->handlers = parseExceptionHandlers();
     }
     expect(TokenKind::KwEnd, "at end of block statement");
-    if (check(TokenKind::Identifier)) {
-        advance();
-    }
+    parseClosingName(toLower(label));
     expect(TokenKind::Semicolon, "after block statement");
     return statement;
 }

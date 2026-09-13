@@ -97,7 +97,7 @@ void __ada_stream_write(AdaFile* stream, const void* item, int size);
 void __ada_stream_write_bounds(AdaFile* stream, int first, int last);
 void* __ada_stream_read_array(AdaFile* stream, int elementSize, int* first, int* last);
 
-void __ada_stream_elements_read(AdaFileRef handle, void* item, int length, int* last);
+void __ada_stream_elements_read(AdaFileRef handle, void* item, int length, int first, int* last);
 void __ada_stream_elements_write(AdaFileRef handle, const void* item, int length);
 void __ada_stream_set_index(AdaFileRef handle, int index);
 int __ada_stream_index(AdaFileRef handle);

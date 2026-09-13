@@ -1343,7 +1343,8 @@ void QbeEmitter::copyInto(const Value& destination, const Value& source, Type* t
     if (size <= 0) {
         return;
     }
-    line("blit " + source.name + ", " + destination.name + ", " + std::to_string(size));
+    // Source and destination may refer to overlapping slices of the same array.
+    line("call $memmove(l " + destination.name + ", l " + source.name + ", l " + std::to_string(size) + ")");
 }
 
 void QbeEmitter::assignInto(const Value& address, Type* type, Expr* value)

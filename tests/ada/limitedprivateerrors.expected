@@ -1,0 +1,2 @@
+limitedprivateerrors.adb:11:5: error: 'Item' is limited private, so a value of it cannot be assigned outside 'Hidden'
+limitedprivateerrors.adb:12:10: error: 'Item' is limited private, so 'Hidden' has to be the one to say what this operator means

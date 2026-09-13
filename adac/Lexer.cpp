@@ -180,6 +180,10 @@ Token Lexer::lexIdentifierOrKeyword()
         text.push_back(advance());
     }
 
+    if (text.back() == '_' || text.find("__") != std::string::npos) {
+        m_diagnostics.error(location, "an identifier cannot end with an underscore or contain consecutive underscores");
+    }
+
     std::string lower = toLower(text);
     auto it = keywordTable().find(lower);
     TokenKind kind = it != keywordTable().end() ? it->second : TokenKind::Identifier;

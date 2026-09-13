@@ -1,0 +1,2 @@
+identifiererrors.adb:2:5: error: an identifier cannot end with an underscore or contain consecutive underscores
+identifiererrors.adb:3:5: error: an identifier cannot end with an underscore or contain consecutive underscores

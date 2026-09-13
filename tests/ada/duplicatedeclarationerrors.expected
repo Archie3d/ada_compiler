@@ -1,0 +1,2 @@
+duplicatedeclarationerrors.adb:3:5: error: 'vAlUe' has already been declared in this scope
+duplicatedeclarationerrors.adb:4:5: error: 'Other' has already been declared in this scope

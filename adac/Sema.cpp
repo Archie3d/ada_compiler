@@ -430,6 +430,11 @@ void Sema::analyzeObjectDecl(ObjectDecl* decl, Scope* scope)
             continue;
         }
 
+        if (!scope->lookupLocal(decl->namesLower[i]).empty()) {
+            m_diagnostics.error(decl->location, "'" + decl->names[i] + "' has already been declared in this scope");
+            continue;
+        }
+
         Symbol* symbol = m_symbolTable.createSymbol(SymbolKind::Object, decl->namesLower[i], decl->names[i]);
         symbol->type = type;
         symbol->awaitsValue = decl->awaitsValue;
