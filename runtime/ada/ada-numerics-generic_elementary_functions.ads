@@ -1,5 +1,5 @@
--- Elementary real functions. Computation uses the C runtime's double
--- precision, matching the compiler's widest predefined real type.
+-- Elementary real functions. Computation uses float or double libm mappings
+-- according to the machine representation of the generic actual type.
 with Ada.Numerics;
 
 generic
