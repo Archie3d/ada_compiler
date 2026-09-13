@@ -12,7 +12,20 @@ target_sources(${TARGET}
         ${CMAKE_CURRENT_SOURCE_DIR}/Parser.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Type.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Scope.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Sema.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/Sema.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaDecl.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaPackages.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaGenerics.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaStatements.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaNames.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaExpr.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaCalls.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaAttributes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaAggregates.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaStatic.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaChoices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaSupport.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/QbeEmitter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UnitLoader.cpp
 )

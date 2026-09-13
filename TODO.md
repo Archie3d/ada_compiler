@@ -31,7 +31,8 @@ These checkmarks describe tested subsets, not completion of every related Ada ru
 
 ### Fuller overload resolution
 
-Primary code: `adac/Sema.cpp`, `adac/Scope.cpp`.
+Primary code: `adac/sema/SemaCalls.cpp`, `adac/sema/SemaNames.cpp`,
+`adac/sema/SemaDecl.cpp`, `adac/Scope.cpp`.
 
 - [ ] Resolve mutually overloaded nested expressions using candidate sets and
   surrounding context. The current shared-formal-type heuristic is incomplete.
@@ -56,7 +57,8 @@ operator overloads; nested hiding and invalid specification/body pairs.
 
 ### Composite values and returns
 
-Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`, `adac/Sema.cpp`.
+Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`,
+`adac/sema/SemaTypes.cpp`, `adac/sema/SemaAggregates.cpp`.
 
 - [x] Give array/record results caller-owned storage. Fixed-size results use a
   hidden destination pointer. Unconstrained array results transfer a heap copy
@@ -98,7 +100,8 @@ self-overlapping slice assignment.
 
 ### Calls, exceptions, and elaboration
 
-Primary code: `adac/QbeEmitter.cpp`, `adac/Sema.cpp`, `adac/UnitLoader.cpp`.
+Primary code: `adac/QbeEmitter.cpp`, `adac/sema/SemaCalls.cpp`,
+`adac/sema/SemaStatements.cpp`, `adac/sema/SemaPackages.cpp`, `adac/UnitLoader.cpp`.
 
 - [ ] Implement scalar `out`/`in out` copy-in/copy-out behavior and checks on the
   actual object's subtype. The current implementation passes all writable
