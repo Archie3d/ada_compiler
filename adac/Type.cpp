@@ -293,6 +293,8 @@ Type* TypeTable::makeSubtype(const std::string& name, Type* parent, long long lo
     subtype->hasRealRange = parent->hasRealRange;
     subtype->lowReal = parent->lowReal;
     subtype->highReal = parent->highReal;
+    subtype->arrayRank = parent->arrayRank;
+    subtype->isArrayRow = parent->isArrayRow;
     subtype->element = parent->element;
     subtype->index = parent->index;
     subtype->indexLow = parent->indexLow;

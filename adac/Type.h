@@ -112,6 +112,9 @@ public:
     double highReal = 0.0;
 
     // Array types.
+    // Multidimensional arrays use nested row layouts internally.
+    int arrayRank = 1;
+    bool isArrayRow = false;
     Type* element = nullptr;
     Type* index = nullptr;
     long long indexLow = 0;

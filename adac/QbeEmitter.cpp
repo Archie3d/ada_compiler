@@ -1643,6 +1643,39 @@ Value QbeEmitter::emitAddress(Expr* expr)
                 checkNotNull(base);
                 array = baseType(array->target);
             }
+            if (array->arrayRank > 1) {
+                Value address = base;
+                Type* dimension = array;
+                for (Expr* argument : call->resolvedArguments) {
+                    Value index = emitExpr(argument);
+                    std::string wide = index.name;
+                    if (index.type != 'l') {
+                        wide = newTemp();
+                        line(wide + " =l extsw " + index.name);
+                    }
+                    std::string low = newTemp();
+                    std::string high = newTemp();
+                    std::string valid = newTemp();
+                    line(low + " =w csgel " + wide + ", " + std::to_string(dimension->indexLow));
+                    line(high + " =w cslel " + wide + ", " + std::to_string(dimension->indexHigh));
+                    line(valid + " =w and " + low + ", " + high);
+                    std::string ok = newLabel("matrixindexok");
+                    std::string bad = newLabel("matrixindexbad");
+                    branch(Value { valid, 'w' }, ok, bad);
+                    label(bad);
+                    raiseConstraintError();
+                    label(ok);
+                    std::string offset = newTemp();
+                    std::string scaled = newTemp();
+                    std::string next = newTemp();
+                    line(offset + " =l sub " + wide + ", " + std::to_string(dimension->indexLow));
+                    line(scaled + " =l mul " + offset + ", " + std::to_string(typeSize(dimension->element)));
+                    line(next + " =l add " + address.name + ", " + scaled);
+                    address = Value { next, 'l' };
+                    dimension = dimension->element;
+                }
+                return address;
+            }
             Value index = emitExpr(call->resolvedArguments.front());
             long long elementSize = typeSize(array->element);
             std::string lowBound = array->constrained
@@ -3183,7 +3216,7 @@ void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Ty
                 || (component.choiceHighs[i] && !component.choiceHighs[i]->isStatic);
         }
     }
-    if (!target->constrained || dynamicChoice) {
+    if (!target->constrained || dynamicChoice || target->arrayRank > 1 || target->isArrayRow) {
         emitDynamicAggregateInto(expr, withBounds(address, target, nullptr), target);
         return;
     }

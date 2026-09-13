@@ -846,29 +846,61 @@ void Sema::analyzeTypeDecl(TypeDecl* decl, Scope* scope)
     }
     case TypeDefKind::Array: {
         type = makeType(TypeKind::Array);
-        if (definition->indexTypes.size() > 1) {
-            m_diagnostics.error(definition->location, "multi-dimensional arrays are not supported");
+        int rank = static_cast<int>(definition->indexTypes.size());
+        if (rank > 1 && definition->unconstrainedIndexes) {
+            m_diagnostics.error(definition->location, "unconstrained multidimensional arrays are not yet supported");
+            return;
         }
-        type->element = resolveSubtypeIndication(definition->elementType.get(), scope);
-        type->constrained = !definition->unconstrainedIndexes;
-
-        SubtypeIndication* index = definition->indexTypes.front().get();
-        Type* indexType = index->name.empty() ? m_types.integerType()
-                                              : resolveTypeName(index->lower, scope, index->location);
-        type->index = indexType;
-        if (index->rangeLow && index->rangeHigh) {
-            analyzeExpr(index->rangeLow.get(), scope, indexType);
-            analyzeExpr(index->rangeHigh.get(), scope, indexType);
-            long long low = 0;
-            long long high = 0;
-            if (!foldStatic(index->rangeLow.get(), low) || !foldStatic(index->rangeHigh.get(), high)) {
-                m_diagnostics.error(index->location, "array index bounds must be static");
+        Type* cell = resolveSubtypeIndication(definition->elementType.get(), scope);
+        Type* row = type;
+        for (int dimension = 0; dimension < rank; ++dimension) {
+            row->arrayRank = rank - dimension;
+            row->constrained = !definition->unconstrainedIndexes;
+            SubtypeIndication* index = definition->indexTypes[dimension].get();
+            Type* indexType = index->name.empty() ? m_types.integerType()
+                : resolveTypeName(index->lower, scope, index->location);
+            row->index = indexType;
+            if (!isDiscrete(indexType)) {
+                m_diagnostics.error(index->location, "array indices require a discrete type");
             }
-            type->indexLow = low;
-            type->indexHigh = high;
-        } else if (indexType != nullptr && type->constrained) {
-            type->indexLow = indexType->low;
-            type->indexHigh = indexType->high;
+            if (index->rangeLow && index->rangeHigh) {
+                analyzeExpr(index->rangeLow.get(), scope, indexType);
+                analyzeExpr(index->rangeHigh.get(), scope, indexType);
+                if (!foldStatic(index->rangeLow.get(), row->indexLow)
+                    || !foldStatic(index->rangeHigh.get(), row->indexHigh)) {
+                    m_diagnostics.error(index->location, "array index bounds must be static");
+                }
+            } else if (indexType != nullptr && row->constrained) {
+                row->indexLow = indexType->low;
+                row->indexHigh = indexType->high;
+            }
+            if (dimension + 1 == rank) {
+                row->element = cell;
+            } else {
+                row->element = m_types.create(TypeKind::Array, anonymousTypeName());
+                row = row->element;
+                row->isArrayRow = true;
+            }
+        }
+        if (rank > 1) {
+            long long size = typeSize(cell);
+            std::vector<Type*> dimensions;
+            for (Type* dimension = type; dimension != cell; dimension = dimension->element) {
+                if (dimension->indexLow < std::numeric_limits<int>::min()
+                    || dimension->indexHigh > std::numeric_limits<int>::max()
+                    || dimension->indexLow > std::numeric_limits<int>::max()
+                    || dimension->indexHigh < std::numeric_limits<int>::min()) {
+                    m_diagnostics.error(definition->location, "multidimensional bounds must fit a 32-bit index");
+                    return;
+                }
+                dimensions.push_back(dimension);
+            }
+            for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension) {
+                if (__builtin_mul_overflow(size, arrayLength(*dimension), &size)) {
+                    m_diagnostics.error(definition->location, "multidimensional array storage size is too large");
+                    return;
+                }
+            }
         }
         break;
     }
@@ -2327,6 +2359,10 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
             m_diagnostics.error(expr->location, "only an array can be sliced");
             return nullptr;
         }
+        if (prefixType->arrayRank > 1) {
+            m_diagnostics.error(expr->location, "only one-dimensional arrays can be sliced");
+            return nullptr;
+        }
         Expr* low = expr->arguments.front().value.get();
         Expr* high = expr->arguments.front().high.get();
         analyzeExpr(low, scope, prefixType->index);
@@ -2569,17 +2605,23 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
         m_diagnostics.error(expr->location, "only arrays and subprograms can be applied to arguments");
         return nullptr;
     }
-    if (expr->arguments.size() != 1) {
-        m_diagnostics.error(expr->location, "arrays with one index expect exactly one index value");
+    if (expr->arguments.size() != static_cast<std::size_t>(array->arrayRank)) {
+        m_diagnostics.error(expr->location, "array indexing requires " + std::to_string(array->arrayRank) + " index value(s)");
         return nullptr;
     }
-
     expr->form = CallForm::Indexing;
-    Expr* index = expr->arguments.front().value.get();
-    analyzeExpr(index, scope, array->index);
-    adaptUniversal(index, array->index != nullptr ? array->index : m_types.integerType());
-    expr->resolvedArguments.push_back(index);
-    expr->type = array->element;
+    int rank = array->arrayRank;
+    for (int dimension = 0; dimension < rank; ++dimension) {
+        Expr* index = expr->arguments[dimension].value.get();
+        Type* indexType = analyzeExpr(index, scope, array->index);
+        if (!typesCompatible(array->index, indexType)) {
+            m_diagnostics.error(index->location, "index value has an incompatible type");
+        }
+        adaptUniversal(index, array->index != nullptr ? array->index : m_types.integerType());
+        expr->resolvedArguments.push_back(index);
+        array = array->element;
+    }
+    expr->type = array;
     (void)expected;
     return expr->type;
 }
@@ -2620,6 +2662,23 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
     // Subtypes carry their own constraint, so the prefix type is used as written.
     Type* base = prefixType;
     const std::string& name = expr->lower;
+    if (base != nullptr && base->kind == TypeKind::Array
+        && (name == "first" || name == "last" || name == "length")) {
+        long long dimension = 1;
+        Type* dimensionType = expr->arguments.empty() ? nullptr : rootType(expr->arguments.front()->type);
+        if (expr->arguments.size() > 1
+            || (!expr->arguments.empty() && (!foldStatic(expr->arguments.front().get(), dimension)
+                || dimensionType == nullptr
+                || (dimensionType->kind != TypeKind::Integer && dimensionType->kind != TypeKind::UniversalInteger)))
+            || dimension < 1 || dimension > base->arrayRank) {
+            m_diagnostics.error(expr->location, "array dimension must be a static value within the array rank");
+            return nullptr;
+        }
+        for (long long i = 1; i < dimension; ++i) {
+            base = base->element;
+        }
+        expr->prefixType = base;
+    }
 
     if (name == "read" || name == "write" || name == "input" || name == "output") {
         bool reads = name == "read" || name == "input";
@@ -3391,6 +3450,10 @@ Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope
             m_diagnostics.error(indication->location, "index constraints require an array type");
             return base;
         }
+        if (array->arrayRank > 1) {
+            m_diagnostics.error(indication->location, "multidimensional index constraints must be specified in the type declaration");
+            return base;
+        }
         analyzeExpr(indication->indexLows.front().get(), scope, array->index);
         long long low = 0;
         long long high = 0;
@@ -3526,7 +3589,7 @@ bool Sema::typesCompatible(Type* target, Type* source) const
         return concrete->kind == TypeKind::Float;
     }
     if (left->kind == TypeKind::Array && right->kind == TypeKind::Array) {
-        return rootType(left->element) == rootType(right->element);
+        return left->arrayRank == right->arrayRank && rootType(left->element) == rootType(right->element);
     }
     return false;
 }

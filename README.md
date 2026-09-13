@@ -196,6 +196,21 @@ still apply.
 Dependency ordering and declarations inside library-level statement blocks
 remain future work.
 
+Statically constrained multidimensional arrays support nested aggregates,
+checked indexing on every axis, assignment, equality, and subprogram parameters
+and results:
+
+```ada
+   type Matrix is array (2 .. 3, 5 .. 7) of Integer;
+   M : Matrix := ((1, 2, 3), (4, 5, 6));
+   -- M (3, 7) = 6; M'Length (2) = 3
+```
+
+`First`, `Last`, `Length`, and `Range` accept a static dimension number (default
+1). Dimensions may use enumeration indices or null ranges. Bounds must be
+static and fit a 32-bit index; unconstrained multidimensional types and runtime
+multidimensional constraints remain unsupported.
+
 Local one-dimensional arrays can use runtime index constraints or take their
 bounds from an initializer:
 

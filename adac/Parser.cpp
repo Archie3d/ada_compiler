@@ -1247,24 +1247,18 @@ void Parser::parseDiscreteRange(std::string& typeName, std::string& typeLower, E
         m_position = saved;
     }
 
+    std::size_t rangeStart = m_position;
     ExprPtr first = parseSimpleExpression();
     if (first->kind == ExprKind::Attribute) {
         auto* attribute = static_cast<AttributeExpr*>(first.get());
         if (attribute->lower == "range") {
             auto makeAttribute = [&](const char* name) {
-                auto expr = std::make_unique<AttributeExpr>();
-                expr->location = attribute->location;
+                m_position = rangeStart;
+                ExprPtr copy = parseSimpleExpression();
+                auto* expr = static_cast<AttributeExpr*>(copy.get());
                 expr->name = name;
                 expr->lower = name;
-                auto prefixCopy = std::make_unique<IdentifierExpr>();
-                if (attribute->prefix && attribute->prefix->kind == ExprKind::Identifier) {
-                    auto* identifier = static_cast<IdentifierExpr*>(attribute->prefix.get());
-                    prefixCopy->location = identifier->location;
-                    prefixCopy->name = identifier->name;
-                    prefixCopy->lower = identifier->lower;
-                }
-                expr->prefix = std::move(prefixCopy);
-                return ExprPtr(std::move(expr));
+                return copy;
             };
             low = makeAttribute("first");
             high = makeAttribute("last");

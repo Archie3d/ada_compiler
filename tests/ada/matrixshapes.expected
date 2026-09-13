@@ -1,0 +1,3 @@
+three dimensions, enum indices, record cells, and null dimensions
+null dimension rejects indexing
+aggregate row shape checked

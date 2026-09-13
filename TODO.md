@@ -212,12 +212,16 @@ passing through nested calls, length mismatch, and concatenating integer arrays.
 
 ### Multidimensional arrays
 
-- [ ] Multiple index types and constraints in the semantic type representation.
-  Parsing accepts an index list, but semantic analysis explicitly rejects it.
-- [ ] Per-dimension bounds, strides, indexing checks, and dimension arguments to
-  attributes such as `Matrix'Length (2)`.
-- [ ] Multidimensional aggregates, assignment, equality, and parameter/result
-  conventions, building on the descriptor and composite-return work above.
+- [x] Statically constrained multidimensional types, represented internally as
+  nested rows with separate index types and bounds. Storage is row-major.
+- [x] Checked indexing on every axis and static dimension arguments to `First`,
+  `Last`, `Length`, and `Range`. Index bounds currently must fit 32 bits.
+- [x] Nested aggregates, assignment, equality, and parameters/results for fixed
+  shapes, including null dimensions, enum indices, and record components.
+  Covered by `matrices.adb`, `matrixshapes.adb`, and `matrixerrors.adb`.
+- [ ] Unconstrained multidimensional types, object/subtype index constraints,
+  and runtime bounds. Extend descriptors and call/result conventions with
+  per-dimension bounds and strides; implement shape checks and bound sliding.
 
 Tests: constrained and unconstrained matrices, different lower bounds per axis,
 empty dimensions, and out-of-range indices in each dimension.
@@ -329,5 +333,5 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: multidimensional arrays. Modular types can be developed
+Suggested next sequence: runtime multidimensional array descriptors. Modular types can be developed
 as a separate bounded extension after the numeric follow-up checks.
