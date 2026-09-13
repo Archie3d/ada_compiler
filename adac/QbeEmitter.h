@@ -38,6 +38,9 @@ private:
         std::ostringstream body;
         std::string frameAllocation;
         std::string arrayArena;
+        std::string temporaryArena;
+        bool arrayArenaUsed = false;
+        bool temporaryArenaUsed = false;
         std::string frameTemp;
         bool hasFrame = false;
         bool terminated = false;
@@ -45,6 +48,7 @@ private:
         std::unordered_map<Symbol*, std::string> locals;
         std::unordered_map<Symbol*, std::pair<std::string, std::string>> bounds;
         std::vector<std::string> handlerLabels;
+        std::unordered_map<std::string, std::pair<std::string, std::string>> handlerStorage;
         std::vector<std::pair<std::string, std::string>> activeExceptions;
         std::unordered_map<const LoopStmt*, std::string> loopExits;
         std::string propagateLabel;
@@ -75,6 +79,9 @@ private:
     void emitLocalDeclarations(DeclList& declarations);
     void emitDynamicArray(ObjectDecl* object, Symbol* symbol);
     void emitArrayFill(const Value& address, Type* type, Expr* value);
+    std::string storageArena(bool temporary, bool allocate = false);
+    std::pair<std::string, std::string> storageCheckpoint();
+    void rewindStorage(const std::pair<std::string, std::string>& checkpoint);
     void emitStatements(StmtList& statements);
     void emitStatement(Stmt* statement);
     void emitHandlers(std::vector<ExceptionHandler>& handlers, const std::string& afterLabel,

@@ -10,8 +10,8 @@ function $__ada_elaborate() {
 function $hello() {
 @start
     call $__ada_put_line(l $.str.0, w 13)
-    %.t0 =w loadsw $__ada_exception
-    jnz %.t0, @propagate.1, @nothrow.2
+    %.t5 =w loadsw $__ada_exception
+    jnz %.t5, @propagate.1, @nothrow.2
 @nothrow.2
     ret
 @propagate.1
@@ -21,15 +21,15 @@ function $hello() {
 export function w $main() {
 @start
     call $__ada_elaborate()
-    %.t1 =w loadsw $__ada_exception
-    jnz %.t1, @unhandled.4, @elaborated.5
+    %.t6 =w loadsw $__ada_exception
+    jnz %.t6, @unhandled.4, @elaborated.5
 @elaborated.5
     call $hello()
-    %.t2 =w loadsw $__ada_exception
-    jnz %.t2, @unhandled.4, @done.6
+    %.t7 =w loadsw $__ada_exception
+    jnz %.t7, @unhandled.4, @done.6
 @unhandled.4
-    %.t3 =l loadl $__ada_exception_name
-    call $__ada_unhandled(l %.t3)
+    %.t8 =l loadl $__ada_exception_name
+    call $__ada_unhandled(l %.t8)
     ret 1
 @done.6
     ret 0

@@ -431,8 +431,8 @@ void __ada_array_result(void* descriptor, const void* source, int first, int las
     memcpy((char*)descriptor + 16, &size, sizeof size);
 }
 
-/* Per-activation ownership of local dynamic arrays. Keep allocations linked
-   until the activation returns, including propagation and early returns. */
+/* Each activation has separate local-object and temporary allocation lists.
+   Checkpoints release a suffix on scope/statement exit; returns release all. */
 typedef struct AdaArrayAllocation
 {
     struct AdaArrayAllocation* next;
@@ -466,14 +466,32 @@ void* __ada_array_local(void** owner, int first, int last, int64_t elementSize)
     return allocation->data;
 }
 
-void __ada_array_release(void** owner)
+void __ada_array_rewind(void** owner, void* checkpoint)
 {
     AdaArrayAllocation* allocation = *owner;
-    while (allocation != NULL) {
+    while (allocation != checkpoint) {
         AdaArrayAllocation* next = allocation->next;
         free(allocation->data);
         free(allocation);
         allocation = next;
     }
-    *owner = NULL;
+    *owner = checkpoint;
+}
+
+void __ada_array_release(void** owner)
+{
+    __ada_array_rewind(owner, NULL);
+}
+
+void __ada_array_adopt(void** owner, void* data)
+{
+    AdaArrayAllocation* allocation = malloc(sizeof *allocation);
+    if (allocation == NULL) {
+        free(data);
+        __ada_raise(ADA_STORAGE_ERROR);
+        return;
+    }
+    allocation->data = data;
+    allocation->next = *owner;
+    *owner = allocation;
 }

@@ -43,6 +43,8 @@ void* __ada_allocate(long size);
 void __ada_deallocate(void* address);
 void* __ada_array_local(void** owner, int first, int last, int64_t elementSize);
 void __ada_array_release(void** owner);
+void __ada_array_rewind(void** owner, void* checkpoint);
+void __ada_array_adopt(void** owner, void* data);
 
 /* Internal unconstrained-array return descriptor: pointer, two 32-bit bounds,
    and a 64-bit transfer size. The caller owns and releases the buffer. */

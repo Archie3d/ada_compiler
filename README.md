@@ -162,10 +162,11 @@ null results preserve their bounds and have zero length. Functions of every
 result type that fall through without returning raise `Program_Error`, including
 when a handler finishes without returning a value.
 
-Variable-size result temporaries remain on the caller's stack until it exits,
-so repeated calls in long loops can accumulate stack storage. Inference of
-unconstrained aggregate bounds remains future work; return a constrained local
-object or use a constrained subtype for these aggregates.
+Variable-size results and concatenations use a caller-owned temporary list,
+reclaimed at statement boundaries and after repeated while-condition and array
+fill evaluations. Returned buffers are adopted without another stack copy.
+Inference of unconstrained aggregate bounds remains future work; return a
+constrained local object or use a constrained subtype for these aggregates.
 The new internal return convention requires rebuilding Ada code and using the
 matching runtime; imported C calls retain their existing convention.
 
@@ -205,9 +206,11 @@ also travel through slices, function results, calls, and captured variables.
 `others` aggregates and component defaults are evaluated per element. Grouped
 object declarations evaluate an initializer separately for each object.
 
-Dynamic local array data uses heap storage owned by the enclosing call and is
-released on normal return or exception propagation. Repeated block entries retain
-allocations until that call exits. This implementation uses signed 32-bit bounds,
+Dynamic local array data uses heap storage released when its block finishes,
+on labelled loop exits, or when an exception leaves the scope. A block's locals
+remain alive in its own handlers; enclosing objects remain alive when an inner
+block fails. Function returns release remaining local and temporary allocations.
+This implementation uses signed 32-bit bounds,
 limits lengths to `Integer'Last`, checks allocation sizes, and raises
 `Storage_Error` on allocation failure. Runtime named subtype constraints,
 library-level dynamic objects, and positional/named runtime-bounded aggregates

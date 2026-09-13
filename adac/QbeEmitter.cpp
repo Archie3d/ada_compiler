@@ -326,6 +326,7 @@ void QbeEmitter::emitElaborationDeclarations(DeclList& declarations)
             } else {
                 std::string dispatch = newLabel("packagehandler");
                 std::string after = newLabel("packagehandled");
+                m_context->handlerStorage[dispatch] = storageCheckpoint();
                 m_context->handlerLabels.push_back(dispatch);
                 emitStatements(package->body);
                 m_context->handlerLabels.pop_back();
@@ -444,9 +445,37 @@ void QbeEmitter::finishFunction(const std::string& signature)
         if (!context.arrayArena.empty() && bodyLine.compare(0, 7, "    ret") == 0) {
             text += "    call $__ada_array_release(l " + context.arrayArena + ")\n";
         }
+        if (!context.temporaryArena.empty() && bodyLine.compare(0, 7, "    ret") == 0) {
+            text += "    call $__ada_array_release(l " + context.temporaryArena + ")\n";
+        }
         text += bodyLine + "\n";
     }
     text += "}\n";
+    // Checkpoints are emitted before all branches have been visited. Remove
+    // bookkeeping for an arena if no branch ever allocates into it. Arena
+    // operands are unique numbered temporaries; match the complete number.
+    for (const auto& arena : { std::make_pair(context.arrayArena, context.arrayArenaUsed),
+                              std::make_pair(context.temporaryArena, context.temporaryArenaUsed) }) {
+        if (arena.first.empty() || arena.second) {
+            continue;
+        }
+        std::istringstream lines(text);
+        std::string filtered;
+        std::string current;
+        while (std::getline(lines, current)) {
+            std::size_t position = current.find(arena.first);
+            while (position != std::string::npos
+                   && position + arena.first.size() < current.size()
+                   && std::isdigit(static_cast<unsigned char>(current[position + arena.first.size()]))) {
+                position = current.find(arena.first, position + arena.first.size());
+            }
+            bool referencesArena = position != std::string::npos;
+            if (!referencesArena) {
+                filtered += current + "\n";
+            }
+        }
+        text = filtered;
+    }
     m_functions.push_back(text);
 }
 
@@ -546,6 +575,7 @@ void QbeEmitter::emitSubprogram(SubprogramBody* body)
     } else {
         std::string dispatch = newLabel("handler");
         std::string after = newLabel("handled");
+        context.handlerStorage[dispatch] = storageCheckpoint();
         context.handlerLabels.push_back(dispatch);
         emitStatements(body->body);
         context.handlerLabels.pop_back();
@@ -643,6 +673,7 @@ void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
         m_diagnostics.error(object->location, "array object bounds cannot be inferred from this initializer");
         return;
     }
+    m_context->arrayArenaUsed = true;
     if (m_context->arrayArena.empty()) {
         m_context->arrayArena = allocScratch(8);
         m_context->prologue << "    storel 0, " << m_context->arrayArena << "\n";
@@ -713,11 +744,13 @@ void QbeEmitter::emitArrayFill(const Value& address, Type* type, Expr* value)
     std::string element = newTemp();
     line(offset + " =l mul " + index + ", " + std::to_string(typeSize(type->element)));
     line(element + " =l add " + address.name + ", " + offset);
+    auto elementStorage = storageCheckpoint();
     if (value != nullptr) {
         assignInto(Value { element, 'l' }, type->element, value);
     } else {
         emitDefaultInit(Value { element, 'l' }, type->element);
     }
+    rewindStorage(elementStorage);
     std::string next = newTemp();
     line(next + " =l add " + index + ", 1");
     line("storel " + next + ", " + slot);
@@ -727,6 +760,8 @@ void QbeEmitter::emitArrayFill(const Value& address, Type* type, Expr* value)
 
 void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
 {
+    std::string temporaryMark = newTemp();
+    line(temporaryMark + " =l loadl " + storageArena(true));
     for (const DeclPtr& decl : declarations) {
         switch (decl->kind) {
         case DeclKind::Object: {
@@ -787,6 +822,7 @@ void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
             } else {
                 std::string dispatch = newLabel("packagehandler");
                 std::string after = newLabel("packagehandled");
+                m_context->handlerStorage[dispatch] = storageCheckpoint();
                 m_context->handlerLabels.push_back(dispatch);
                 emitStatements(package->body);
                 m_context->handlerLabels.pop_back();
@@ -803,16 +839,51 @@ void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
             break;
         }
     }
+    if (!m_context->terminated) {
+        line("call $__ada_array_rewind(l " + storageArena(true) + ", l " + temporaryMark + ")");
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Statements
 // ---------------------------------------------------------------------------
 
+std::string QbeEmitter::storageArena(bool temporary, bool allocate)
+{
+    if (allocate) {
+        (temporary ? m_context->temporaryArenaUsed : m_context->arrayArenaUsed) = true;
+    }
+    std::string& arena = temporary ? m_context->temporaryArena : m_context->arrayArena;
+    if (arena.empty()) {
+        arena = allocScratch(8);
+        m_context->prologue << "    storel 0, " << arena << "\n";
+    }
+    return arena;
+}
+
+std::pair<std::string, std::string> QbeEmitter::storageCheckpoint()
+{
+    std::string local = newTemp();
+    std::string temporary = newTemp();
+    line(local + " =l loadl " + storageArena(false));
+    line(temporary + " =l loadl " + storageArena(true));
+    return { local, temporary };
+}
+
+void QbeEmitter::rewindStorage(const std::pair<std::string, std::string>& checkpoint)
+{
+    line("call $__ada_array_rewind(l " + storageArena(true) + ", l " + checkpoint.second + ")");
+    line("call $__ada_array_rewind(l " + storageArena(false) + ", l " + checkpoint.first + ")");
+}
+
 void QbeEmitter::emitStatements(StmtList& statements)
 {
     for (const StmtPtr& statement : statements) {
+        auto checkpoint = storageCheckpoint();
         emitStatement(statement.get());
+        if (!m_context->terminated) {
+            rewindStorage(checkpoint);
+        }
     }
 }
 
@@ -856,6 +927,7 @@ void QbeEmitter::emitHandlers(std::vector<ExceptionHandler>& handlers, const std
                               const std::string& dispatchLabel)
 {
     label(dispatchLabel);
+    rewindStorage(m_context->handlerStorage.at(dispatchLabel));
     std::string status = newTemp();
     line(status + " =w loadsw $__ada_exception");
 
@@ -1013,7 +1085,9 @@ void QbeEmitter::emitStatement(Stmt* statement)
 
         label(head);
         if (loop->loopKind == LoopKind::While) {
+            auto conditionStorage = storageCheckpoint();
             Value condition = emitExpr(loop->condition.get());
+            rewindStorage(conditionStorage);
             branch(condition, bodyLabel, exit);
             label(bodyLabel);
         }
@@ -1133,6 +1207,7 @@ void QbeEmitter::emitStatement(Stmt* statement)
         }
         std::string dispatch = newLabel("handler");
         std::string after = newLabel("handled");
+        m_context->handlerStorage[dispatch] = storageCheckpoint();
         m_context->handlerLabels.push_back(dispatch);
         emitStatements(block->body);
         m_context->handlerLabels.pop_back();
@@ -2215,28 +2290,20 @@ Value QbeEmitter::emitCall(CallExpr* expr)
 
     emitExceptionCheck();
     if (dynamicResult) {
-        // The callee transfers a heap copy. Move it immediately to this
-        // activation's stack, then release the transfer buffer before any
-        // further Ada expression can raise an exception.
+        // Adopt the transfer buffer into the caller's expression lifetime.
         std::string pointer = newTemp();
         line(pointer + " =l loadl " + resultStorage);
         std::string firstAddress = newTemp();
         std::string lastAddress = newTemp();
-        std::string sizeAddress = newTemp();
         line(firstAddress + " =l add " + resultStorage + ", 8");
         line(lastAddress + " =l add " + resultStorage + ", 12");
-        line(sizeAddress + " =l add " + resultStorage + ", 16");
         std::string first = newTemp();
         std::string last = newTemp();
-        std::string size = newTemp();
         line(first + " =w loadw " + firstAddress);
         line(last + " =w loadw " + lastAddress);
-        line(size + " =l loadl " + sizeAddress);
-        std::string buffer = newTemp();
-        line(buffer + " =l alloc8 " + size);
-        line("call $memcpy(l " + buffer + ", l " + pointer + ", l " + size + ")");
-        line("call $__ada_deallocate(l " + pointer + ")");
-        result = Value { buffer, 'l', first, last };
+        line("call $__ada_array_adopt(l " + storageArena(true, true) + ", l " + pointer + ")");
+        emitExceptionCheck();
+        result = Value { pointer, 'l', first, last };
     } else if (compositeResult) {
         result = withBounds(Value { resultStorage, 'l' }, subprogram->returnType, nullptr);
     }
@@ -2463,19 +2530,16 @@ Value QbeEmitter::emitConcatenation(BinaryExpr* expr)
         if (isLiteralOperand(operand.length.name)) {
             continue;
         }
-        std::string sum = newTemp();
-        line(sum + " =w add " + total + ", " + operand.length.name);
-        total = sum;
+        total = emitIntegerOperation(0, Value { total, 'w' }, operand.length, 'w').name;
     }
 
     std::string buffer;
     if (allStatic) {
         buffer = allocScratch(staticTotal > 0 ? staticTotal : 1);
     } else {
-        std::string size = newTemp();
-        line(size + " =l extsw " + total);
         buffer = newTemp();
-        line(buffer + " =l alloc8 " + size);
+        line(buffer + " =l call $__ada_array_local(l " + storageArena(true, true) + ", w 1, w " + total + ", l 1)");
+        emitExceptionCheck();
     }
 
     std::string running = buffer;

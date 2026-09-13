@@ -1,0 +1,5 @@
+abandoned blocks reclaimed; enclosing arrays preserved
+block locals survive their handler
+labelled exit leaves nested allocations
+loop condition and expression temporaries
+returned arrays outlive callee cleanup

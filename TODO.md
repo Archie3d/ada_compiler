@@ -60,14 +60,16 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`, `adac/Sema.cpp`.
 
 - [x] Give array/record results caller-owned storage. Fixed-size results use a
   hidden destination pointer. Unconstrained array results transfer a heap copy
-  plus bounds; the caller immediately copies to its stack and frees the transfer
-  buffer. Exceptions skip unfinished results. Covered by `compositereturns.adb`.
+  plus bounds; the caller adopts the transfer buffer into its temporary
+  allocation list. Exceptions skip unfinished results. Covered by `compositereturns.adb`.
 - [x] Preserve bounds of unconstrained array results through constrained-object
   initialization, assignment with sliding/length checks, indexing, attributes,
   and nested calls, including null ranges. Covered by `compositereturns.adb`.
-- [ ] Reclaim variable-size expression temporaries before the caller exits;
-  repeated calls in loops currently accumulate caller stack storage. Include
-  normal and exceptional exits in the dynamic-array lifetime work.
+- [x] Reclaim variable-size array results and concatenation temporaries at
+  statement boundaries, declaration-list completion, aggregate fill iterations,
+  and while-condition evaluation. Exception handlers rewind abandoned storage;
+  function exits release remaining allocations. Covered by `arraylifetimes.adb`
+  and the instrumented `runtime.array_storage` allocation/free test.
 - [ ] Infer array aggregate bounds in unconstrained contexts. Until implemented,
   use a constrained subtype or local object when returning an array aggregate;
   unsupported direct returns are diagnosed (`returnerrors.adb`).
@@ -182,8 +184,10 @@ sizes, signed small representations, invalid size clauses, and unsupported impor
 - [x] Allocate local array data with checked sizes and release all allocations
   on every enclosing function exit, including exception propagation. Reject
   lengths beyond `Integer'Last` with `Storage_Error`.
-- [ ] Reclaim local arrays at block exit and unify temporary ownership; repeated
-  block entries currently retain allocations until the enclosing call exits.
+- [x] Reclaim local arrays at block exit, including labelled loop exits and
+  exception propagation, while preserving enclosing objects and a block's
+  locals during its own handler. Local arrays and temporaries use separate
+  checkpointed allocation lists (`arraylifetimes.adb`).
 - [ ] Runtime scalar/named subtype bounds and library-level dynamic arrays.
   Unsupported cases have diagnostics in `dynamicarrayerrors.adb`.
 - [ ] Positional/named aggregates with runtime bounds and inference of bounds
@@ -315,4 +319,4 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: dynamic array scope/temporary reclamation; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: runtime-bounded array aggregates; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.
