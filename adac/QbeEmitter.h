@@ -112,7 +112,7 @@ private:
     Value emitModulo(const Value& left, const Value& right, char type);
     Value emitPower(const Value& left, const Value& right, char type);
     void emitAggregateInto(AggregateExpr* expr, const Value& address, Type* type);
-    void emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type);
+    Value emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type);
 
     Value emitSlice(CallExpr* expr);
     std::string widenToDouble(const Value& value);

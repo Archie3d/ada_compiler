@@ -165,8 +165,12 @@ when a handler finishes without returning a value.
 Variable-size results and concatenations use a caller-owned temporary list,
 reclaimed at statement boundaries and after repeated while-condition and array
 fill evaluations. Returned buffers are adopted without another stack copy.
-Inference of unconstrained aggregate bounds remains future work; return a
-constrained local object or use a constrained subtype for these aggregates.
+Unconstrained aggregates infer their bounds: positional notation starts at the
+index subtype's lower bound, and named notation uses its choice bounds. This
+works for local initializers, call arguments, qualified expressions, and function
+returns, including single dynamic range choices and null ranges. Bounds are
+evaluated once; component expressions run once per element. `others` still needs
+bounds from the surrounding context.
 The new internal return convention requires rebuilding Ada code and using the
 matching runtime; imported C calls retain their existing convention.
 
@@ -222,8 +226,7 @@ block fails. Function returns release remaining local and temporary allocations.
 This implementation uses signed 32-bit bounds,
 limits lengths to `Integer'Last`, checks allocation sizes, and raises
 `Storage_Error` on allocation failure. Runtime named subtype constraints,
-library-level dynamic objects, and inference of unconstrained aggregate bounds
-remain unsupported.
+and library-level dynamic objects remain unsupported.
 
 Floating point types are declared with `digits`, optionally with a range:
 

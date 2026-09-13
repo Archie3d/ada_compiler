@@ -70,9 +70,11 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`, `adac/Sema.cpp`.
   and while-condition evaluation. Exception handlers rewind abandoned storage;
   function exits release remaining allocations. Covered by `arraylifetimes.adb`
   and the instrumented `runtime.array_storage` allocation/free test.
-- [ ] Infer array aggregate bounds in unconstrained contexts. Until implemented,
-  use a constrained subtype or local object when returning an array aggregate;
-  unsupported direct returns are diagnosed (`returnerrors.adb`).
+- [x] Infer array aggregate bounds in unconstrained contexts: positional values
+  start at the index subtype's lower bound; named choices supply their bounds.
+  Includes local initialization, arguments, returns, single dynamic choices,
+  and null ranges (`inferredaggregates.adb`, `inferredaggregatechecks.adb`).
+  `others` without contextual bounds remains illegal (`returnerrors.adb`).
 - [x] Compare non-character arrays element by element, recursively for composite
   elements. Discrete-element array ordering is lexicographic; arrays of other
   element types support equality only. Covered by `arraycompare.adb` and
@@ -196,8 +198,10 @@ sizes, signed small representations, invalid size clauses, and unsupported impor
   components into temporary storage before replacing the target. Dynamic choices
   also work with static target constraints. Covered by `runtimeaggregates.adb`,
   `runtimeaggregatechecks.adb`, and `dynamicaggregateerrors.adb`.
-- [ ] Infer bounds from unconstrained aggregates, including returned aggregates
-  and initializer-constrained objects (`returnerrors.adb` remains a diagnostic).
+- [x] Infer bounds from unconstrained aggregates, including returned aggregates
+  and initializer-constrained objects. Bounds are evaluated once; invalid index
+  constraints precede component evaluation, and null ranges skip components.
+  Covered by `inferredaggregates.adb` and `inferredaggregatechecks.adb`.
 - [ ] Generalize descriptors to wider indices and per-dimension strides before
   extending the remaining array operations.
 - [ ] General one-dimensional array concatenation, including element/array
@@ -325,4 +329,5 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: unconstrained aggregate bound inference; multidimensional arrays. Modular types can be developed as a separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: multidimensional arrays. Modular types can be developed
+as a separate bounded extension after the numeric follow-up checks.

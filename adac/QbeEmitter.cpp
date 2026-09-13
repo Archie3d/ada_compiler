@@ -661,7 +661,8 @@ void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
         label(ready);
     }
     Value source;
-    bool aggregate = object->initializer && object->initializer->kind == ExprKind::Aggregate;
+    bool aggregate = explicitBounds && object->initializer
+        && object->initializer->kind == ExprKind::Aggregate;
     if (object->initializer && !aggregate) {
         source = emitExpr(object->initializer.get());
         if (!explicitBounds) {
@@ -2951,11 +2952,16 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
     return Value { "0", 'w' };
 }
 
-void QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type)
+Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type)
 {
-    if (!address.hasBounds()) {
-        m_diagnostics.error(expr->location, "array aggregate requires bounds from its context");
-        return;
+    bool inferred = !address.hasBounds();
+    if (inferred) {
+        for (const AggregateComponent& component : expr->components) {
+            if (component.isOthers) {
+                m_diagnostics.error(expr->location, "others requires bounds from the aggregate context");
+                return Value { "0", 'l', "1", "0" };
+            }
+        }
     }
     struct Choice
     {
@@ -2975,8 +2981,9 @@ void QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& addr
         line(result + " =l extsw " + value.name);
         return result;
     };
-    std::string first = widen(Value { address.first, 'w' });
-    std::string last = widen(Value { address.last, 'w' });
+    std::string first = inferred ? std::to_string(type->index->low)
+                                 : widen(Value { address.first, 'w' });
+    std::string last = inferred ? first : widen(Value { address.last, 'w' });
     for (AggregateComponent& component : expr->components) {
         if (component.isOthers) {
             others = component.value.get();
@@ -3022,9 +3029,12 @@ void QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& addr
         last = newTemp();
         line(last + " =l add " + first + ", " + std::to_string(position - 1));
     }
-    Value length = lengthOf(address, type);
-    std::string wideLength = newTemp();
-    line(wideLength + " =l extuw " + length.name);
+    std::string wideLength;
+    if (!inferred) {
+        Value length = lengthOf(address, type);
+        wideLength = newTemp();
+        line(wideLength + " =l extuw " + length.name);
+    }
     // Check size and explicit choices before evaluating any component value.
     auto require = [&](const std::string& condition) {
         std::string good = newLabel("aggregateok");
@@ -3045,8 +3055,24 @@ void QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& addr
     std::string flag = newTemp();
     line(flag + " =l extuw " + nonNull);
     line(normalized + " =l mul " + count + ", " + flag);
-    line(same + " =w ceql " + normalized + ", " + wideLength);
-    require(same);
+    if (inferred) {
+        wideLength = normalized;
+        // Descriptor bounds remain 32-bit. Check index subtype constraints
+        // only for non-null ranges, as for explicit runtime constraints.
+        emitRangeCheck(Value { first, 'l' }, m_sema.typeTable().integerType(), expr->location);
+        emitRangeCheck(Value { last, 'l' }, m_sema.typeTable().integerType(), expr->location);
+        std::string check = newLabel("aggregatebounds");
+        std::string ready = newLabel("aggregateboundsready");
+        branch(Value { nonNull, 'w' }, check, ready);
+        label(check);
+        emitRangeCheck(Value { first, 'l' }, type->index, expr->location);
+        emitRangeCheck(Value { last, 'l' }, type->index, expr->location);
+        jump(ready);
+        label(ready);
+    } else {
+        line(same + " =w ceql " + normalized + ", " + wideLength);
+        require(same);
+    }
     if (others != nullptr) {
         for (const Choice& choice : choices) {
             std::string low = newTemp();
@@ -3058,9 +3084,11 @@ void QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& addr
             require(valid);
         }
     }
+    std::string resultFirst = inferred ? first : address.first;
+    std::string resultLast = inferred ? last : address.last;
     std::string buffer = newTemp();
     line(buffer + " =l call $__ada_array_local(l " + storageArena(true, true)
-         + ", w " + address.first + ", w " + address.last + ", l "
+         + ", w " + resultFirst + ", w " + resultLast + ", l "
          + std::to_string(typeSize(type->element)) + ")");
     emitExceptionCheck();
     std::string slot = allocScratch(8);
@@ -3115,7 +3143,10 @@ void QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& addr
     label(done);
     std::string size = newTemp();
     line(size + " =l mul " + wideLength + ", " + std::to_string(typeSize(type->element)));
-    line("call $memmove(l " + address.name + ", l " + buffer + ", l " + size + ")");
+    if (!inferred) {
+        line("call $memmove(l " + address.name + ", l " + buffer + ", l " + size + ")");
+    }
+    return Value { buffer, 'l', resultFirst, resultLast };
 }
 
 void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Type* type)
@@ -3226,8 +3257,7 @@ void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Ty
 Value QbeEmitter::emitAggregate(AggregateExpr* expr)
 {
     if (isUnconstrainedArray(expr->type)) {
-        m_diagnostics.error(expr->location, "array aggregate requires a constrained subtype");
-        return Value { "0", 'l', "1", "0" };
+        return emitDynamicAggregateInto(expr, Value {}, expr->type);
     }
     long long size = typeSize(expr->type);
     std::string buffer = allocScratch(size > 0 ? size : 1);
