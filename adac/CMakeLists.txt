@@ -26,7 +26,20 @@ target_sources(${TARGET}
         ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaStatic.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaChoices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/sema/SemaSupport.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/QbeEmitter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeEmitter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeDecl.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeFunctions.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeStatements.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeExceptions.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeStorage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeArrays.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeExpr.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeCalls.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeOperators.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeComparisons.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeAttributes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeAggregates.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/emitter/QbeSupport.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UnitLoader.cpp
 )
 
