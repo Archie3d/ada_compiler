@@ -1,0 +1,8 @@
+choices run once before component values
+null dimensions preserve bounds and skip component values
+equal-length rows require identical bounds
+ragged rows rejected before component values
+deep subaggregate bounds checked
+contextual row bounds checked before assignment
+null row bounds must also match
+inferred bounds respect the index subtype

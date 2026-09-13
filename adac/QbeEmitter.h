@@ -35,6 +35,12 @@ public:
     void emit(const std::vector<CompilationUnit*>& units, std::ostream& out);
 
 private:
+    struct ArrayAggregatePlan
+    {
+        std::unordered_map<Expr*, Value> choices;
+        std::unordered_map<Expr*, Value> shapes;
+    };
+
     struct FunctionContext
     {
         Symbol* symbol = nullptr;
@@ -116,7 +122,9 @@ private:
     Value emitModulo(const Value& left, const Value& right, char type);
     Value emitPower(const Value& left, const Value& right, char type);
     void emitAggregateInto(AggregateExpr* expr, const Value& address, Type* type);
-    Value emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type);
+    Value prepareArrayAggregate(Expr* expr, const Value& context, Type* type, ArrayAggregatePlan& plan);
+    Value emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type,
+                                   ArrayAggregatePlan* plan = nullptr);
 
     Value emitSlice(CallExpr* expr);
     std::string widenToDouble(const Value& value);

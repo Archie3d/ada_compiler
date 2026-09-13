@@ -3153,13 +3153,178 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
     return Value { "0", 'w' };
 }
 
-Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type)
+// Multidimensional aggregates determine every index range before evaluating
+// component values. Keep choice operands so repeated rows do not reevaluate
+// their bounds while filling storage.
+Value QbeEmitter::prepareArrayAggregate(Expr* expr, const Value& context, Type* type, ArrayAggregatePlan& plan)
 {
-    bool inferred = !address.hasBounds();
-    if (inferred && type->arrayRank > 1) {
-        m_diagnostics.error(expr->location, "multidimensional aggregates currently require explicit target bounds");
-        return Value { "0", 'l' };
+    auto widen = [&](const std::string& value) {
+        std::string wide = newTemp();
+        line(wide + " =l extsw " + value);
+        return wide;
+    };
+    auto require = [&](const std::string& condition) {
+        std::string ok = newLabel("aggregateshapeok");
+        std::string bad = newLabel("aggregateshapebad");
+        branch(Value { condition, 'w' }, ok, bad);
+        label(bad);
+        raiseConstraintError();
+        label(ok);
+    };
+    std::string first = context.hasBounds() ? widen(context.first) : std::to_string(type->index->low);
+    std::string last;
+    AggregateExpr* aggregate = nullptr;
+    bool others = false;
+    if (expr->kind == ExprKind::StringLiteral) {
+        auto* literal = static_cast<StringLiteralExpr*>(expr);
+        last = newTemp();
+        line(last + " =l add " + first + ", " + std::to_string(static_cast<long long>(literal->value.size()) - 1));
+    } else if (expr->kind == ExprKind::Aggregate) {
+        aggregate = static_cast<AggregateExpr*>(expr);
+        std::vector<std::pair<std::string, std::string>> ranges;
+        long long positional = 0;
+        auto choiceValue = [&](Expr* choice) {
+            Value value = emitExpr(choice);
+            emitRangeCheck(value, m_sema.typeTable().integerType(), choice->location);
+            plan.choices[choice] = value;
+            return value.type == 'l' ? value.name : widen(value.name);
+        };
+        for (AggregateComponent& component : aggregate->components) {
+            if (component.isOthers) {
+                others = true;
+            } else if (component.choiceLows.empty()) {
+                ++positional;
+            } else {
+                for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
+                    std::string low = choiceValue(component.choiceLows[i].get());
+                    std::string high = component.choiceHighs[i] ? choiceValue(component.choiceHighs[i].get()) : low;
+                    ranges.push_back({ low, high });
+                }
+            }
+        }
+        if (others) {
+            if (!context.hasBounds()) {
+                m_diagnostics.error(expr->location, "others requires bounds from the aggregate context");
+                return Value {};
+            }
+            last = widen(context.last);
+            for (const auto& range : ranges) {
+                std::string low = newTemp();
+                std::string high = newTemp();
+                std::string valid = newTemp();
+                line(low + " =w csgel " + range.first + ", " + first);
+                line(high + " =w cslel " + range.second + ", " + last);
+                line(valid + " =w and " + low + ", " + high);
+                require(valid);
+            }
+            if (positional != 0) {
+                std::string end = newTemp();
+                std::string valid = newTemp();
+                line(end + " =l add " + first + ", " + std::to_string(positional - 1));
+                line(valid + " =w cslel " + end + ", " + last);
+                require(valid);
+            }
+        } else if (ranges.empty()) {
+            last = newTemp();
+            line(last + " =l add " + first + ", " + std::to_string(positional - 1));
+        } else if (ranges.size() == 1) {
+            first = ranges.front().first;
+            last = ranges.front().second;
+        } else {
+            // Sema requires multiple choices to be static and contiguous.
+            long long low = std::numeric_limits<long long>::max();
+            long long high = std::numeric_limits<long long>::min();
+            for (AggregateComponent& component : aggregate->components) {
+                for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
+                    low = std::min(low, component.choiceLows[i]->staticValue);
+                    high = std::max(high, component.choiceHighs[i]
+                        ? component.choiceHighs[i]->staticValue : component.choiceLows[i]->staticValue);
+                }
+            }
+            first = std::to_string(low);
+            last = std::to_string(high);
+        }
+    } else {
+        m_diagnostics.error(expr->location, "multidimensional aggregate requires nested subaggregates");
+        return Value {};
     }
+    emitRangeCheck(Value { first, 'l' }, m_sema.typeTable().integerType(), expr->location);
+    emitRangeCheck(Value { last, 'l' }, m_sema.typeTable().integerType(), expr->location);
+    std::string nonNull = newTemp();
+    std::string check = newLabel("aggregateindexbounds");
+    std::string ready = newLabel("aggregateindexready");
+    line(nonNull + " =w csgel " + last + ", " + first);
+    branch(Value { nonNull, 'w' }, check, ready);
+    label(check);
+    emitRangeCheck(Value { first, 'l' }, type->index, expr->location);
+    emitRangeCheck(Value { last, 'l' }, type->index, expr->location);
+    jump(ready);
+    label(ready);
+    Value shape { "", 'l', first, last };
+    if (context.hasBounds()) {
+        // Compare normalized lengths using wide arithmetic, before any cells
+        // are evaluated. Named aggregates may slide to the target's bounds.
+        auto length = [&](const std::string& low, const std::string& high) {
+            std::string span = newTemp();
+            std::string count = newTemp();
+            std::string nonNull = newTemp();
+            std::string flag = newTemp();
+            std::string normalized = newTemp();
+            line(span + " =l sub " + high + ", " + low);
+            line(count + " =l add " + span + ", 1");
+            line(nonNull + " =w csgel " + high + ", " + low);
+            line(flag + " =l extuw " + nonNull);
+            line(normalized + " =l mul " + count + ", " + flag);
+            return normalized;
+        };
+        std::string actual = length(first, last);
+        std::string targetFirst = widen(context.first);
+        std::string targetLast = widen(context.last);
+        std::string wanted = length(targetFirst, targetLast);
+        std::string same = newTemp();
+        line(same + " =w ceql " + actual + ", " + wanted);
+        require(same);
+    }
+    if (type->arrayRank > 1 && aggregate != nullptr) {
+        Value rowContext = arrayRow(context, type);
+        for (AggregateComponent& component : aggregate->components) {
+            Value row = prepareArrayAggregate(component.value.get(), rowContext, type->element, plan);
+            if (!row.hasBounds()) {
+                return Value {};
+            }
+            std::vector<std::pair<std::string, std::string>> dimensions { { row.first, row.last } };
+            dimensions.insert(dimensions.end(), row.innerBounds.begin(), row.innerBounds.end());
+            if (shape.innerBounds.empty()) {
+                shape.innerBounds = dimensions;
+            } else {
+                for (std::size_t i = 0; i < dimensions.size(); ++i) {
+                    std::string low = newTemp();
+                    std::string high = newTemp();
+                    std::string same = newTemp();
+                    line(low + " =w ceql " + shape.innerBounds[i].first + ", " + dimensions[i].first);
+                    line(high + " =w ceql " + shape.innerBounds[i].second + ", " + dimensions[i].second);
+                    line(same + " =w and " + low + ", " + high);
+                    require(same);
+                }
+            }
+        }
+    }
+    plan.shapes[expr] = shape;
+    return shape;
+}
+
+Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type,
+                                          ArrayAggregatePlan* plan)
+{
+    if (type->arrayRank > 1 && plan == nullptr) {
+        ArrayAggregatePlan prepared;
+        Value shape = prepareArrayAggregate(expr, address, type, prepared);
+        if (!shape.hasBounds()) {
+            return Value { "0", 'l' };
+        }
+        return emitDynamicAggregateInto(expr, address, type, &prepared);
+    }
+    bool inferred = !address.hasBounds();
     if (inferred) {
         for (const AggregateComponent& component : expr->components) {
             if (component.isOthers) {
@@ -3199,12 +3364,14 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
         } else {
             named = true;
             for (std::size_t i = 0; i < component.choiceLows.size(); ++i) {
-                Value lowValue = emitExpr(component.choiceLows[i].get());
+                Value lowValue = plan != nullptr ? plan->choices.at(component.choiceLows[i].get())
+                    : emitExpr(component.choiceLows[i].get());
                 emitRangeCheck(lowValue, m_sema.typeTable().integerType(), component.choiceLows[i]->location);
                 std::string low = widen(lowValue);
                 std::string high = low;
                 if (component.choiceHighs[i]) {
-                    Value highValue = emitExpr(component.choiceHighs[i].get());
+                    Value highValue = plan != nullptr ? plan->choices.at(component.choiceHighs[i].get())
+                        : emitExpr(component.choiceHighs[i].get());
                     emitRangeCheck(highValue, m_sema.typeTable().integerType(), component.choiceHighs[i]->location);
                     high = widen(highValue);
                 }
@@ -3291,7 +3458,8 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
     }
     std::string resultFirst = inferred ? first : address.first;
     std::string resultLast = inferred ? last : address.last;
-    std::string elementSize = arrayElementSize(address, type);
+    Value resultShape = inferred && plan != nullptr ? plan->shapes.at(expr) : address;
+    std::string elementSize = arrayElementSize(resultShape, type);
     std::string buffer = newTemp();
     line(buffer + " =l call $__ada_array_local(l " + storageArena(true, true)
          + ", w " + resultFirst + ", w " + resultLast + ", l "
@@ -3318,9 +3486,13 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
     line(element + " =l add " + buffer + ", " + scaled);
     auto fill = [&](Expr* value) {
         auto checkpoint = storageCheckpoint();
-        Value cell = arrayRow(address, type);
+        Value cell = arrayRow(resultShape, type);
         cell.name = element;
-        assignInto(cell, type->element, value);
+        if (type->arrayRank > 1 && value->kind == ExprKind::Aggregate) {
+            emitDynamicAggregateInto(static_cast<AggregateExpr*>(value), cell, type->element, plan);
+        } else {
+            assignInto(cell, type->element, value);
+        }
         rewindStorage(checkpoint);
         jump(next);
     };
@@ -3355,7 +3527,7 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
         line("call $memmove(l " + address.name + ", l " + buffer + ", l " + size + ")");
     }
     Value result { buffer, 'l', resultFirst, resultLast };
-    result.innerBounds = address.innerBounds;
+    result.innerBounds = resultShape.innerBounds;
     return result;
 }
 

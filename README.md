@@ -226,10 +226,25 @@ components, including the remaining dimensions when an outer dimension is null.
 Bounds use 32-bit indices; runtime dimension lengths are limited to `Integer'Last`,
 and storage-size overflow raises `Storage_Error`.
 
-Multidimensional aggregates currently need explicit target bounds. Initializers
-can inherit bounds from an existing array or function result. Runtime subtype
-declarations and stream attributes for unconstrained multidimensional arrays
-remain unsupported.
+Multidimensional aggregates can infer their bounds in initializers, arguments,
+and function returns:
+
+```ada
+   type Matrix is array (Positive range <>, Positive range <>) of Integer;
+   A : Matrix := ((1, 2, 3), (4, 5, 6));
+   B : Matrix := (2 .. Rows + 1 => (5 .. Columns + 4 => 0));
+```
+
+Positional dimensions start at the index subtype's lower bound when there is
+no target constraint; named dimensions use their choices. String literals can
+supply character rows. Index choices are evaluated once before component values.
+Corresponding subaggregates must have identical bounds, including null ranges;
+otherwise `Constraint_Error` is raised. `others` still requires an applicable
+target constraint. These checks follow the
+[Ada aggregate rules](https://www.adaic.org/resources/add_content/standards/22rm/html/RM-4-3-3.html).
+
+Runtime subtype declarations and stream attributes for unconstrained
+multidimensional arrays remain unsupported.
 
 Local one-dimensional arrays can use runtime index constraints or take their
 bounds from an initializer:

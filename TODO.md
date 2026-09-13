@@ -227,9 +227,13 @@ passing through nested calls, length mismatch, and concatenating integer arrays.
   Initializer-constrained objects inherit all bounds from existing array values.
   Covered by `runtimematrices.adb`, `runtimematrixchecks.adb`, and
   `runtimematrixerrors.adb`.
-- [ ] Infer multidimensional aggregate bounds without an explicit target shape,
+- [x] Infer multidimensional aggregate bounds without an explicit target shape,
   including aggregates passed to unconstrained formals and returned directly.
-  Until implemented, reject these cases (`inferredmatrixerrors.adb`).
+  Prepare index choices once before component evaluation; require identical
+  corresponding subaggregate bounds, including null ranges. Support positional,
+  named, and string-literal rows. Covered by `inferredmatrices.adb` and
+  `inferredmatrixchecks.adb`; reject unbounded `others` and non-subaggregate rows
+  in `inferredmatrixerrors.adb` and `matrixaggregateerrors.adb`.
 - [ ] Runtime subtype declarations and runtime bounds in type declarations.
 - [ ] Stream attributes for unconstrained multidimensional arrays.
 - [ ] Wider descriptor indices and lengths; runtime lengths currently cannot
@@ -345,5 +349,6 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: multidimensional aggregate bound inference. Modular types can be developed
-as a separate bounded extension after the numeric follow-up checks.
+Suggested next sequence: runtime array subtype declarations and type bounds.
+Modular types can be developed as a separate bounded extension after the numeric
+follow-up checks.

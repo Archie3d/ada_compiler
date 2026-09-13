@@ -1,0 +1,2 @@
+matrixaggregateerrors.adb:5:22: error: multidimensional aggregate requires nested subaggregates
+matrixaggregateerrors.adb:5:27: error: multidimensional aggregate requires nested subaggregates

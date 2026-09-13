@@ -3011,6 +3011,10 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
                                target->index != nullptr ? target->index : m_types.integerType());
             }
         }
+        if (target->arrayRank > 1 && component.value->kind != ExprKind::Aggregate
+            && !(target->arrayRank == 2 && component.value->kind == ExprKind::StringLiteral)) {
+            m_diagnostics.error(component.value->location, "multidimensional aggregate requires nested subaggregates");
+        }
         Type* valueType = analyzeExpr(component.value.get(), scope, target->element);
         if (!typesCompatible(target->element, valueType)) {
             m_diagnostics.error(component.value->location, "aggregate component has an incompatible type");
