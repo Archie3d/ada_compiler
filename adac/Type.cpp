@@ -355,3 +355,26 @@ bool TypeTable::isString(const Type* type) const
     const Type* root = rootType(const_cast<Type*>(type));
     return root != nullptr && root->kind == TypeKind::Array && isCharacter(root->element);
 }
+
+// The base subtype keeps type identity and representation, but drops the
+// first subtype's constraint. Cache it on the type, not on each subtype.
+Type* TypeTable::scalarBaseType(Type* type)
+{
+    type = baseType(type);
+    if (type == nullptr || (!isDiscrete(type) && !isReal(type))) {
+        return nullptr;
+    }
+    if (type->m_scalarBase != nullptr) {
+        return type->m_scalarBase;
+    }
+    Type* result = makeSubtype(type->name + "'Base", type, type->low, type->high);
+    if (type->kind == TypeKind::Integer) {
+        bool wide = typeSize(type) == 8;
+        result->low = wide ? std::numeric_limits<long long>::min() : -2147483648LL;
+        result->high = wide ? std::numeric_limits<long long>::max() : 2147483647LL;
+    } else if (type->kind == TypeKind::Float) {
+        result->hasRealRange = false;
+    }
+    type->m_scalarBase = result;
+    return result;
+}

@@ -29,6 +29,9 @@ void adaptUniversal(Expr* expr, Type* type)
         adaptUniversal(static_cast<UnaryExpr*>(expr)->operand.get(), type);
     } else if (expr->kind == ExprKind::Binary) {
         auto* binary = static_cast<BinaryExpr*>(expr);
+        if (binary->operatorCall) {
+            return;
+        }
         adaptUniversal(binary->left.get(), type);
         adaptUniversal(binary->right.get(), type);
     }
@@ -281,7 +284,7 @@ std::string Sema::mangle(const std::string& name) const
     for (const std::string& part : m_namePrefix) {
         result += part + "__";
     }
-    result += name;
+    result += name == "**" ? "operator_power" : name;
     return result;
 }
 
@@ -998,6 +1001,14 @@ Symbol* Sema::declareSubprogram(SubprogramSpec& spec, Scope* scope, bool isBody)
     }
     Type* returnType = spec.isFunction ? resolveSubtypeIndication(spec.returnType.get(), scope) : nullptr;
 
+    if (spec.lower == "**") {
+        if (!spec.isFunction || spec.parameters.size() != 2
+            || spec.parameters[0].mode != ParameterMode::In
+            || spec.parameters[1].mode != ParameterMode::In
+            || spec.parameters[0].defaultValue || spec.parameters[1].defaultValue) {
+            m_diagnostics.error(spec.location, "'**' requires two in parameters without defaults");
+        }
+    }
     if (isBody) {
         for (Symbol* candidate : scope->lookupLocal(spec.lower)) {
             if (candidate->kind != SymbolKind::Subprogram || candidate->hasBody) {
@@ -1435,12 +1446,23 @@ bool Sema::bindGenericFormals(GenericInstantiationDecl* decl, Symbol* generic, S
         }
 
         if (formal.kind == GenericFormalKind::TypeFormal) {
-            if (actual->kind != ExprKind::Identifier) {
+            Type* type = nullptr;
+            if (actual->kind == ExprKind::Identifier) {
+                type = resolveTypeName(static_cast<IdentifierExpr*>(actual)->lower, scope, actual->location);
+            } else if (actual->kind == ExprKind::Attribute
+                       && static_cast<AttributeExpr*>(actual)->lower == "base") {
+                type = analyzeAttribute(static_cast<AttributeExpr*>(actual), scope);
+            } else if (actual->kind == ExprKind::Selected) {
+                auto* selected = static_cast<SelectedExpr*>(actual);
+                type = analyzeSelected(selected, scope, nullptr);
+                if (selected->symbol == nullptr || selected->symbol->kind != SymbolKind::TypeName) {
+                    m_diagnostics.error(actual->location, "a generic formal type expects a type name");
+                    return false;
+                }
+            } else {
                 m_diagnostics.error(actual->location, "a generic formal type expects a type name");
                 return false;
             }
-            auto* identifier = static_cast<IdentifierExpr*>(actual);
-            Type* type = resolveTypeName(identifier->lower, scope, actual->location);
             if (type == nullptr) {
                 return false;
             }
@@ -2069,6 +2091,7 @@ Type* Sema::analyzeExpr(Expr* expr, Scope* scope, Type* expected)
         expr->type = type;
         expr->isStatic = qualified->operand->isStatic;
         expr->staticValue = qualified->operand->staticValue;
+        expr->staticReal = qualified->operand->staticReal;
         return type;
     }
     }
@@ -2326,6 +2349,15 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
     if (expr->callee->kind == ExprKind::Identifier) {
         auto* identifier = static_cast<IdentifierExpr*>(expr->callee.get());
         candidates = scope->lookup(identifier->lower);
+        if (identifier->lower.ends_with("'base")) {
+            Type* type = resolveTypeName(identifier->lower, scope, identifier->location);
+            if (type == nullptr) {
+                return nullptr;
+            }
+            Symbol* mark = m_symbolTable.createSymbol(SymbolKind::TypeName, identifier->lower, identifier->name);
+            mark->type = type;
+            candidates = { mark };
+        }
         if (candidates.empty()) {
             m_diagnostics.error(expr->callee->location, "'" + identifier->name + "' is not declared");
             return nullptr;
@@ -2654,7 +2686,24 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
     if (!prefixIsType) {
         prefixType = analyzeExpr(expr->prefix.get(), scope, nullptr);
     }
+    if (expr->prefix->kind == ExprKind::Selected) {
+        auto* selected = static_cast<SelectedExpr*>(expr->prefix.get());
+        prefixIsType = selected->symbol != nullptr && selected->symbol->kind == SymbolKind::TypeName;
+    } else if (expr->prefix->kind == ExprKind::Attribute) {
+        prefixIsType = static_cast<AttributeExpr*>(expr->prefix.get())->lower == "base";
+    }
     expr->prefixType = prefixType;
+    if (expr->lower == "base") {
+        if (!prefixIsType || !expr->arguments.empty()) {
+            m_diagnostics.error(expr->location, "'Base requires a scalar subtype mark");
+            return nullptr;
+        }
+        expr->type = m_types.scalarBaseType(prefixType);
+        if (expr->type == nullptr) {
+            m_diagnostics.error(expr->location, "'Base requires a scalar subtype mark");
+        }
+        return expr->type;
+    }
 
     for (const ExprPtr& argument : expr->arguments) {
         // An aggregate waits for the stream attributes below, which know the
@@ -3259,9 +3308,38 @@ Type* Sema::analyzeBinaryOperation(BinaryExpr* expr, Scope* scope, Type* expecte
     }
 
     case BinaryOp::Power: {
-        // The exponent is a whole number whatever the base is.
         Type* left = analyzeExpr(expr->left.get(), scope, expected);
-        Type* right = analyzeExpr(expr->right.get(), scope, m_types.integerType());
+        std::vector<Symbol*> operators = scope->lookup("**");
+        Type* right = analyzeExpr(expr->right.get(), scope,
+                                  operators.empty() ? m_types.integerType() : nullptr);
+        bool visibleOperator = false;
+        for (Symbol* candidate : operators) {
+            if (candidate->kind == SymbolKind::Subprogram && candidate->parameters.size() == 2
+                && matchesResult(candidate, expected)
+                && typesCompatible(candidate->parameters[0]->type, left)
+                && typesCompatible(candidate->parameters[1]->type, right)) {
+                visibleOperator = true;
+            }
+        }
+        if (visibleOperator) {
+            auto call = std::make_unique<CallExpr>();
+            call->location = expr->location;
+            auto callee = std::make_unique<IdentifierExpr>();
+            callee->location = expr->location;
+            callee->name = "**";
+            callee->lower = "**";
+            call->callee = std::move(callee);
+            Association first;
+            first.value = std::move(expr->left);
+            Association second;
+            second.value = std::move(expr->right);
+            call->arguments.push_back(std::move(first));
+            call->arguments.push_back(std::move(second));
+            expr->type = analyzeCall(call.get(), scope, expected);
+            expr->operatorCall = std::move(call);
+            return expr->type;
+        }
+        // Predefined exponentiation still requires an integer exponent.
         adaptUniversal(expr->right.get(), m_types.integerType());
         if (!isNumeric(baseType(left))) {
             m_diagnostics.error(expr->location, "arithmetic operators require numeric operands");
@@ -3392,6 +3470,14 @@ std::vector<Symbol*> Sema::lookupAll(const std::string& lower, Scope* scope)
 
 Type* Sema::resolveTypeName(const std::string& lower, Scope* scope, const SourceLocation& location)
 {
+    if (lower.ends_with("'base")) {
+        Type* prefix = resolveTypeName(lower.substr(0, lower.size() - 5), scope, location);
+        Type* result = m_types.scalarBaseType(prefix);
+        if (prefix != nullptr && result == nullptr) {
+            m_diagnostics.error(location, "'Base requires a scalar subtype mark");
+        }
+        return result;
+    }
     Symbol* symbol = lookupName(lower, scope);
     if (symbol == nullptr) {
         m_diagnostics.error(location, "'" + lower + "' is not declared");
@@ -3708,6 +3794,9 @@ bool Sema::foldStatic(Expr* expr, long long& value) const
     }
     case ExprKind::Binary: {
         auto* binary = static_cast<BinaryExpr*>(expr);
+        if (binary->operatorCall) {
+            return false;
+        }
         long long left = 0;
         long long right = 0;
         if (!foldStatic(binary->left.get(), left) || !foldStatic(binary->right.get(), right)) {
@@ -3801,6 +3890,9 @@ bool Sema::foldStaticReal(Expr* expr, double& value) const
     }
     case ExprKind::Binary: {
         auto* binary = static_cast<BinaryExpr*>(expr);
+        if (binary->operatorCall) {
+            return false;
+        }
         double left = 0.0;
         double right = 0.0;
         if (!foldStaticReal(binary->left.get(), left) || !foldStaticReal(binary->right.get(), right)) {

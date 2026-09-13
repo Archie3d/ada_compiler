@@ -7,6 +7,27 @@
 namespace
 {
 
+// Flatten names that can denote a subtype, including the Base attribute.
+std::string typeMarkName(Expr* expr)
+{
+    if (expr->kind == ExprKind::Identifier) {
+        return static_cast<IdentifierExpr*>(expr)->lower;
+    }
+    if (expr->kind == ExprKind::Selected) {
+        auto* selected = static_cast<SelectedExpr*>(expr);
+        std::string prefix = typeMarkName(selected->prefix.get());
+        return prefix.empty() ? "" : prefix + "." + selected->selectorLower;
+    }
+    if (expr->kind == ExprKind::Attribute) {
+        auto* attribute = static_cast<AttributeExpr*>(expr);
+        std::string prefix = typeMarkName(attribute->prefix.get());
+        if (attribute->lower == "base" && attribute->arguments.empty() && !prefix.empty()) {
+            return prefix + "'base";
+        }
+    }
+    return "";
+}
+
 bool isAttributeName(TokenKind kind)
 {
     switch (kind) {
@@ -263,6 +284,18 @@ std::string Parser::parseCompoundName(std::string& lowered)
         const Token& part = advance();
         name += "." + part.text;
         lowered += "." + part.lower;
+    }
+    return name;
+}
+
+std::string Parser::parseSubtypeMark(std::string& lowered)
+{
+    std::string name = parseCompoundName(lowered);
+    while (check(TokenKind::Tick) && peek(1).lower == "base") {
+        advance();
+        advance();
+        name += "'Base";
+        lowered += "'base";
     }
     return name;
 }
@@ -542,7 +575,7 @@ TypeDefinitionPtr Parser::parseTypeDefinition()
             index->location = current().location;
             std::size_t saved = m_position;
             if (check(TokenKind::Identifier)) {
-                index->name = parseCompoundName(index->lower);
+                index->name = parseSubtypeMark(index->lower);
                 if (match(TokenKind::KwRange)) {
                     if (match(TokenKind::Box)) {
                         definition->unconstrainedIndexes = true;
@@ -616,7 +649,7 @@ SubtypeIndicationPtr Parser::parseSubtypeIndication()
 {
     auto indication = std::make_unique<SubtypeIndication>();
     indication->location = current().location;
-    indication->name = parseCompoundName(indication->lower);
+    indication->name = parseSubtypeMark(indication->lower);
 
     if (match(TokenKind::KwDigits)) {
         indication->digits = parseSimpleExpression();
@@ -660,7 +693,16 @@ SubprogramSpec Parser::parseSubprogramSpec()
     }
 
     // A library unit may be a child, as Ada.Unchecked_Deallocation is.
-    spec.name = parseCompoundName(spec.lower);
+    if (spec.isFunction && check(TokenKind::StringLiteral)) {
+        const Token& designator = advance();
+        if (designator.text != "**") {
+            fail("only the '**' operator designator is supported");
+        }
+        spec.name = designator.text;
+        spec.lower = designator.text;
+    } else {
+        spec.name = parseCompoundName(spec.lower);
+    }
 
     if (check(TokenKind::LeftParen)) {
         parseParameterList(spec);
@@ -890,6 +932,12 @@ DeclPtr Parser::parseSubprogramDeclOrBody()
 
 void Parser::parseClosingName(const std::string& lower, bool allowSimpleName)
 {
+    if (check(TokenKind::StringLiteral) && lower == "**") {
+        if (advance().text != lower) {
+            fail("closing operator designator does not match");
+        }
+        return;
+    }
     if (!check(TokenKind::Identifier)) {
         return;
     }
@@ -988,9 +1036,10 @@ DeclPtr Parser::parsePragma()
             if (check(TokenKind::Identifier)) {
                 advance();
             }
-            if (match(TokenKind::Comma) && check(TokenKind::Identifier)) {
+            if (match(TokenKind::Comma) && (check(TokenKind::Identifier)
+                || (check(TokenKind::StringLiteral) && current().text == "**"))) {
                 pragma->entity = current().text;
-                pragma->entityLower = current().lower;
+                pragma->entityLower = toLower(current().text);
                 advance();
             }
             if (match(TokenKind::Comma) && check(TokenKind::StringLiteral)) {
@@ -1233,7 +1282,7 @@ void Parser::parseDiscreteRange(std::string& typeName, std::string& typeLower, E
 
     if (check(TokenKind::Identifier)) {
         std::string lowered;
-        std::string name = parseCompoundName(lowered);
+        std::string name = parseSubtypeMark(lowered);
         if (match(TokenKind::KwRange)) {
             typeName = name;
             typeLower = lowered;
@@ -1563,6 +1612,13 @@ ExprPtr Parser::parsePrimary()
         return expr;
     }
     case TokenKind::StringLiteral: {
+        if (current().text == "**" && peek(1).kind == TokenKind::LeftParen) {
+            auto expr = std::make_unique<IdentifierExpr>();
+            expr->location = location;
+            expr->name = advance().text;
+            expr->lower = expr->name;
+            return parseNameSuffixes(std::move(expr));
+        }
         auto expr = std::make_unique<StringLiteralExpr>();
         expr->location = location;
         expr->value = advance().text;
@@ -1610,7 +1666,8 @@ ExprPtr Parser::parsePrimary()
 ExprPtr Parser::parseNameSuffixes(ExprPtr prefix)
 {
     while (true) {
-        if (check(TokenKind::Dot) && (peek(1).kind == TokenKind::Identifier || peek(1).kind == TokenKind::KwAll)) {
+        if (check(TokenKind::Dot) && (peek(1).kind == TokenKind::Identifier || peek(1).kind == TokenKind::KwAll
+            || (peek(1).kind == TokenKind::StringLiteral && peek(1).text == "**"))) {
             SourceLocation location = current().location;
             advance();
             const Token& selector = advance();
@@ -1661,14 +1718,10 @@ ExprPtr Parser::parseNameSuffixes(ExprPtr prefix)
                 advance();
                 auto expr = std::make_unique<QualifiedExpr>();
                 expr->location = location;
-                if (prefix->kind == ExprKind::Identifier) {
-                    auto* identifier = static_cast<IdentifierExpr*>(prefix.get());
-                    expr->typeName = identifier->name;
-                    expr->typeLower = identifier->lower;
-                } else if (prefix->kind == ExprKind::Selected) {
-                    auto* selected = static_cast<SelectedExpr*>(prefix.get());
-                    expr->typeName = selected->selector;
-                    expr->typeLower = selected->selectorLower;
+                expr->typeLower = typeMarkName(prefix.get());
+                expr->typeName = expr->typeLower;
+                if (expr->typeLower.empty()) {
+                    fail("qualified expression requires a subtype mark");
                 }
                 expr->operand = parseExpression();
                 expect(TokenKind::RightParen, "after qualified expression");
@@ -1685,6 +1738,19 @@ ExprPtr Parser::parseNameSuffixes(ExprPtr prefix)
             expr->prefix = std::move(prefix);
             expr->name = name.text.empty() ? tokenKindName(name.kind) : name.text;
             expr->lower = toLower(expr->name);
+            if (expr->lower == "base" && check(TokenKind::LeftParen)) {
+                // Keep conversion argument ownership and emission identical to
+                // ordinary type conversions; resolveTypeName handles the mark.
+                auto mark = std::make_unique<IdentifierExpr>();
+                mark->location = location;
+                mark->name = typeMarkName(expr.get());
+                if (mark->name.empty()) {
+                    fail("'Base conversion requires a subtype mark");
+                }
+                mark->lower = mark->name;
+                prefix = std::move(mark);
+                continue;
+            }
             if (check(TokenKind::LeftParen)) {
                 advance();
                 while (true) {

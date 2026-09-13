@@ -176,6 +176,7 @@ struct BinaryExpr : Expr
     BinaryOp op = BinaryOp::Add;
     ExprPtr left;
     ExprPtr right;
+    ExprPtr operatorCall; // Resolved user-defined exponentiation.
 };
 
 struct UnaryExpr : Expr

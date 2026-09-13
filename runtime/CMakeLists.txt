@@ -9,6 +9,7 @@ target_sources(${TARGET}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/adart.c
         ${CMAKE_CURRENT_SOURCE_DIR}/adaio.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/adanumerics.c
 )
 
 target_include_directories(${TARGET}

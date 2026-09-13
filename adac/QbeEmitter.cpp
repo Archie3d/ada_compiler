@@ -2536,12 +2536,8 @@ Value QbeEmitter::emitRuntimeCall(CallExpr* expr, Symbol* subprogram)
 
         Value value = emitExpr(argument);
         emitRangeCheck(value, parameter->type, argument->location);
-        // Every run time entry taking a real by value takes a double, whatever
-        // precision the type the call named is held in.
-        if (isReal(parameter->type)) {
-            arguments.push_back("d " + widenToDouble(value));
-            continue;
-        }
+        // Imported C functions use the declared scalar parameter class:
+        // Float travels as s and Long_Float as d, without default promotion.
         arguments.push_back(std::string(1, formalClass) + " " + value.name);
     }
 
@@ -2804,6 +2800,9 @@ Value QbeEmitter::emitIntegerOperation(int operation, const Value& left, const V
 
 Value QbeEmitter::emitBinary(BinaryExpr* expr)
 {
+    if (expr->operatorCall) {
+        return emitExpr(expr->operatorCall.get());
+    }
     switch (expr->op) {
     case BinaryOp::AndThen:
     case BinaryOp::OrElse:

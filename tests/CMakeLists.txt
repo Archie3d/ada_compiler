@@ -238,3 +238,6 @@ add_ada_test(streamrawedges SOURCES streamrawedges.adb)
 add_ada_error_test(identifiererrors SOURCES identifiererrors.adb)
 add_ada_error_test(closingnameerrors SOURCES closingnameerrors.adb)
 add_ada_error_test(duplicatedeclarationerrors SOURCES duplicatedeclarationerrors.adb)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/BasePowerTests.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImportedFloatAbiTests.cmake)

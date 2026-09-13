@@ -72,6 +72,7 @@ public:
     // A subtype or derived type points at the type it was built from.
     Type* base = nullptr;
     bool isSubtype = false;
+    Type* m_scalarBase = nullptr;
 
     // Named but not yet described.  'type Node;' declares one so that an access
     // type can point at a record declared further down, and the full definition
@@ -178,6 +179,8 @@ public:
 
     Type* create(TypeKind kind, const std::string& name);
     Type* makeSubtype(const std::string& name, Type* parent, long long low, long long high);
+
+    Type* scalarBaseType(Type* type);
 
     Type* voidType() const { return m_void; }
     Type* universalInteger() const { return m_universalInteger; }

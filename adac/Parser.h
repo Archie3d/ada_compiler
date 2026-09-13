@@ -57,6 +57,7 @@ private:
     SubtypeIndicationPtr parseSubtypeIndication();
     std::vector<std::string> parseIdentifierList(std::vector<std::string>& lowered);
     std::string parseCompoundName(std::string& lowered);
+    std::string parseSubtypeMark(std::string& lowered);
 
     void parseClosingName(const std::string& lower, bool allowSimpleName = false);
 

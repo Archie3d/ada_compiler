@@ -1,0 +1,8 @@
+basepowererrors.adb:3:20: error: 'Base requires a scalar subtype mark
+basepowererrors.adb:5:28: error: 'Value' is not a type
+basepowererrors.adb:6:5: error: '**' requires two in parameters without defaults
+basepowererrors.adb:7:5: error: '**' requires two in parameters without defaults
+basepowererrors.adb:8:5: error: '**' requires two in parameters without defaults
+basepowererrors.adb:11:17: error: the exponent of '**' must be an integer
+basepowererrors.adb:12:19: error: 'Base requires a scalar subtype mark
+basepowererrors.adb:12:24: error: 'First requires an array or scalar prefix
