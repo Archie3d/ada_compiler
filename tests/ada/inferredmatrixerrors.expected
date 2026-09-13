@@ -1,0 +1,2 @@
+inferredmatrixerrors.adb:3:19: error: multidimensional aggregates currently require explicit target bounds
+inferredmatrixerrors.adb:3:5: error: array object bounds cannot be inferred from this initializer

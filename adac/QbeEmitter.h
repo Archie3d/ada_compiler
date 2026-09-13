@@ -20,6 +20,10 @@ struct Value
     std::string first;
     std::string last;
 
+    // Bounds for dimensions 2 through rank; ordinary arrays of arrays keep
+    // their component bounds in the component type instead.
+    std::vector<std::pair<std::string, std::string>> innerBounds;
+
     bool hasBounds() const { return !first.empty() && !last.empty(); }
 };
 
@@ -46,7 +50,7 @@ private:
         bool terminated = false;
         long long frameSize = 8;
         std::unordered_map<Symbol*, std::string> locals;
-        std::unordered_map<Symbol*, std::pair<std::string, std::string>> bounds;
+        std::unordered_map<Symbol*, Value> bounds;
         std::vector<std::string> handlerLabels;
         std::unordered_map<std::string, std::pair<std::string, std::string>> handlerStorage;
         std::vector<std::pair<std::string, std::string>> activeExceptions;
@@ -120,7 +124,10 @@ private:
     std::string enumTableFor(const Type* type);
     Value withBounds(const Value& address, Type* type, Symbol* symbol);
     Value lengthOf(const Value& array, Type* type);
-    std::pair<std::string, std::string> boundsFor(Symbol* symbol);
+    Value boundsFor(Symbol* symbol);
+    Value arrayRow(const Value& array, Type* type);
+    std::string arrayElementSize(const Value& array, Type* type);
+    void checkArrayShape(const Value& target, Type* targetType, const Value& source, Type* sourceType);
     Value compareArrays(BinaryOp op, const Value& left, Type* leftType, const Value& right, Type* rightType);
     Value compareRecords(const Value& left, const Value& right, Type* type);
     Value compareObjects(const Value& left, const Value& right, Type* type);

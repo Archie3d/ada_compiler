@@ -219,9 +219,21 @@ passing through nested calls, length mismatch, and concatenating integer arrays.
 - [x] Nested aggregates, assignment, equality, and parameters/results for fixed
   shapes, including null dimensions, enum indices, and record components.
   Covered by `matrices.adb`, `matrixshapes.adb`, and `matrixerrors.adb`.
-- [ ] Unconstrained multidimensional types, object/subtype index constraints,
-  and runtime bounds. Extend descriptors and call/result conventions with
-  per-dimension bounds and strides; implement shape checks and bound sliding.
+- [x] Unconstrained multidimensional types, static subtype constraints, and
+  runtime constraints on local objects. Carry per-dimension bounds through
+  captured objects, parameters, and results; compute checked row strides.
+- [x] Shape checks and bound sliding for assignment and constrained parameters
+  and results, shape-aware equality, and contextual runtime aggregates.
+  Initializer-constrained objects inherit all bounds from existing array values.
+  Covered by `runtimematrices.adb`, `runtimematrixchecks.adb`, and
+  `runtimematrixerrors.adb`.
+- [ ] Infer multidimensional aggregate bounds without an explicit target shape,
+  including aggregates passed to unconstrained formals and returned directly.
+  Until implemented, reject these cases (`inferredmatrixerrors.adb`).
+- [ ] Runtime subtype declarations and runtime bounds in type declarations.
+- [ ] Stream attributes for unconstrained multidimensional arrays.
+- [ ] Wider descriptor indices and lengths; runtime lengths currently cannot
+  exceed `Integer'Last`.
 
 Tests: constrained and unconstrained matrices, different lower bounds per axis,
 empty dimensions, and out-of-range indices in each dimension.
@@ -333,5 +345,5 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: runtime multidimensional array descriptors. Modular types can be developed
+Suggested next sequence: multidimensional aggregate bound inference. Modular types can be developed
 as a separate bounded extension after the numeric follow-up checks.

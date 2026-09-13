@@ -1,0 +1,7 @@
+inner dimension assignment checked
+constrained parameter shape checked
+constrained result shape checked
+runtime aggregate shape checked
+outer dimension index checked
+runtime storage size overflow checked
+null shapes, three dimensions, fixed subtypes, and component defaults

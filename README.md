@@ -207,9 +207,29 @@ and results:
 ```
 
 `First`, `Last`, `Length`, and `Range` accept a static dimension number (default
-1). Dimensions may use enumeration indices or null ranges. Bounds must be
-static and fit a 32-bit index; unconstrained multidimensional types and runtime
-multidimensional constraints remain unsupported.
+1). Dimensions may use enumeration indices or null ranges.
+
+Unconstrained multidimensional types support static subtype constraints and
+runtime constraints on local objects:
+
+```ada
+   type Matrix is array (Integer range <>, Integer range <>) of Integer;
+   subtype Small is Matrix (1 .. 2, 1 .. 3);
+   M : Matrix (1 .. Rows, 5 .. Columns + 4) := (others => (others => 0));
+   Copy : Matrix := M;
+```
+
+Every dimension travels with unconstrained parameters and function results,
+including through nested subprograms. Assignment checks all dimension lengths
+and slides values to the destination bounds. Equality compares shapes and
+components, including the remaining dimensions when an outer dimension is null.
+Bounds use 32-bit indices; runtime dimension lengths are limited to `Integer'Last`,
+and storage-size overflow raises `Storage_Error`.
+
+Multidimensional aggregates currently need explicit target bounds. Initializers
+can inherit bounds from an existing array or function result. Runtime subtype
+declarations and stream attributes for unconstrained multidimensional arrays
+remain unsupported.
 
 Local one-dimensional arrays can use runtime index constraints or take their
 bounds from an initializer:

@@ -396,8 +396,9 @@ void __ada_unhandled(const char* name)
 }
 
 /* Internal Ada ABI: an unconstrained result carries a transfer buffer, its
-   original bounds, and the buffer size. The caller copies and frees it as
-   soon as the call succeeds; no pointer into the callee's stack escapes. */
+   first dimension's bounds, and the buffer size. The emitter appends any
+   further dimension bounds after this 24-byte header. The caller adopts the
+   buffer into its temporary allocation list; no callee stack pointer escapes. */
 void __ada_array_result(void* descriptor, const void* source, int first, int last, int64_t elementSize)
 {
     int64_t length = last < first ? 0 : (int64_t)last - (int64_t)first + 1;
@@ -438,6 +439,19 @@ typedef struct AdaArrayAllocation
     struct AdaArrayAllocation* next;
     void* data;
 } AdaArrayAllocation;
+
+/* Checked row strides for multidimensional arrays. Descriptor lengths and
+   array loops currently use signed 32-bit counts. */
+int64_t __ada_array_size(int first, int last, int64_t elementSize)
+{
+    int64_t length = last < first ? 0 : (int64_t)last - first + 1;
+    if (length > INT_MAX || elementSize < 0
+        || (elementSize != 0 && length > INT64_MAX / elementSize)) {
+        __ada_raise(ADA_STORAGE_ERROR);
+        return 0;
+    }
+    return length * elementSize;
+}
 
 void* __ada_array_local(void** owner, int first, int last, int64_t elementSize)
 {

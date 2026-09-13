@@ -517,6 +517,11 @@ void QbeEmitter::emitSubprogram(SubprogramBody* body)
         signature += std::string(1, type) + " %p." + parameter->name;
         if (isUnconstrainedArray(parameter->type)) {
             signature += ", w %p." + parameter->name + ".first, w %p." + parameter->name + ".last";
+            for (int dimension = 1; dimension < parameter->type->arrayRank; ++dimension) {
+                std::string suffix = std::to_string(dimension);
+                signature += ", w %p." + parameter->name + ".first" + suffix
+                    + ", w %p." + parameter->name + ".last" + suffix;
+            }
         }
     }
     signature += ")";
@@ -528,7 +533,7 @@ void QbeEmitter::emitSubprogram(SubprogramBody* body)
             parameter->frameOffset = context.frameSize;
             long long slotSize = parameter->byReference ? 8 : typeSize(parameter->type);
             if (unconstrained) {
-                slotSize = 16;   // Pointer followed by the two bounds.
+                slotSize = 8 + 8 * parameter->type->arrayRank; // Pointer followed by each pair of bounds.
             }
             context.frameSize += slotSize;
             std::string address = newTemp();
@@ -549,13 +554,26 @@ void QbeEmitter::emitSubprogram(SubprogramBody* body)
                 context.prologue << "    " << lastAddress << " =l add " << context.frameTemp << ", "
                                  << parameter->frameOffset + 12 << "\n";
                 context.prologue << "    storew " << incoming << ".last, " << lastAddress << "\n";
+                for (int dimension = 1; dimension < parameter->type->arrayRank; ++dimension) {
+                    std::string firstSlot = newTemp();
+                    std::string lastSlot = newTemp();
+                    context.prologue << "    " << firstSlot << " =l add " << address << ", " << 8 + dimension * 8 << "\n";
+                    context.prologue << "    " << lastSlot << " =l add " << firstSlot << ", 4\n";
+                    context.prologue << "    storew " << incoming << ".first" << dimension << ", " << firstSlot << "\n";
+                    context.prologue << "    storew " << incoming << ".last" << dimension << ", " << lastSlot << "\n";
+                }
             }
             continue;
         }
         if (parameter->byReference) {
             context.locals[parameter] = incoming;
             if (unconstrained) {
-                context.bounds[parameter] = { incoming + ".first", incoming + ".last" };
+                Value bounds { incoming, 'l', incoming + ".first", incoming + ".last" };
+                for (int dimension = 1; dimension < parameter->type->arrayRank; ++dimension) {
+                    bounds.innerBounds.push_back({ incoming + ".first" + std::to_string(dimension),
+                                                   incoming + ".last" + std::to_string(dimension) });
+                }
+                context.bounds[parameter] = bounds;
             }
             continue;
         }
@@ -643,22 +661,30 @@ void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
     Value bounds;
     bool explicitBounds = !object->subtype->indexLows.empty();
     if (explicitBounds) {
-        Value first = emitExpr(object->subtype->indexLows.front().get());
-        Value last = emitExpr(object->subtype->indexHighs.front().get());
-        emitRangeCheck(first, m_sema.typeTable().integerType(), object->location);
-        emitRangeCheck(last, m_sema.typeTable().integerType(), object->location);
-        bounds.first = first.name;
-        bounds.last = last.name;
-        std::string nonNull = newTemp();
-        line(nonNull + " =w csgew " + last.name + ", " + first.name);
-        std::string check = newLabel("checkbounds");
-        std::string ready = newLabel("boundsready");
-        branch(Value { nonNull, 'w' }, check, ready);
-        label(check);
-        emitRangeCheck(first, type->index, object->location);
-        emitRangeCheck(last, type->index, object->location);
-        jump(ready);
-        label(ready);
+        Type* axis = type;
+        for (int dimension = 0; dimension < type->arrayRank; ++dimension) {
+            Value first = emitExpr(object->subtype->indexLows[dimension].get());
+            Value last = emitExpr(object->subtype->indexHighs[dimension].get());
+            emitRangeCheck(first, m_sema.typeTable().integerType(), object->location);
+            emitRangeCheck(last, m_sema.typeTable().integerType(), object->location);
+            if (dimension == 0) {
+                bounds.first = first.name;
+                bounds.last = last.name;
+            } else {
+                bounds.innerBounds.push_back({ first.name, last.name });
+            }
+            std::string nonNull = newTemp();
+            line(nonNull + " =w csgew " + last.name + ", " + first.name);
+            std::string check = newLabel("checkbounds");
+            std::string ready = newLabel("boundsready");
+            branch(Value { nonNull, 'w' }, check, ready);
+            label(check);
+            emitRangeCheck(first, axis->index, object->location);
+            emitRangeCheck(last, axis->index, object->location);
+            jump(ready);
+            label(ready);
+            axis = axis->element;
+        }
     }
     Value source;
     bool aggregate = explicitBounds && object->initializer
@@ -668,6 +694,7 @@ void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
         if (!explicitBounds) {
             bounds.first = source.first;
             bounds.last = source.last;
+            bounds.innerBounds = source.innerBounds;
         }
     }
     if (!bounds.hasBounds()) {
@@ -679,15 +706,18 @@ void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
         m_context->arrayArena = allocScratch(8);
         m_context->prologue << "    storel 0, " << m_context->arrayArena << "\n";
     }
+    std::string elementSize = arrayElementSize(bounds, type);
     std::string pointer = newTemp();
     line(pointer + " =l call $__ada_array_local(l " + m_context->arrayArena + ", w " + bounds.first
-         + ", w " + bounds.last + ", l " + std::to_string(typeSize(type->element)) + ")");
+         + ", w " + bounds.last + ", l " + elementSize + ")");
     emitExceptionCheck();
-    Value address { pointer, 'l', bounds.first, bounds.last };
+    Value address = bounds;
+    address.name = pointer;
+    address.type = 'l';
     if (symbol->isUplevel) {
         m_context->frameSize = (m_context->frameSize + 7) & ~7LL;
         symbol->frameOffset = m_context->frameSize;
-        m_context->frameSize += 16;
+        m_context->frameSize += 8 + 8 * type->arrayRank;
         std::string slot = newTemp();
         line(slot + " =l add " + m_context->frameTemp + ", " + std::to_string(symbol->frameOffset));
         line("storel " + pointer + ", " + slot);
@@ -697,27 +727,25 @@ void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
         line(lastSlot + " =l add " + slot + ", 12");
         line("storew " + bounds.first + ", " + firstSlot);
         line("storew " + bounds.last + ", " + lastSlot);
+        for (std::size_t dimension = 0; dimension < bounds.innerBounds.size(); ++dimension) {
+            std::string firstAddress = newTemp();
+            std::string lastAddress = newTemp();
+            line(firstAddress + " =l add " + slot + ", " + std::to_string(16 + dimension * 8));
+            line(lastAddress + " =l add " + firstAddress + ", 4");
+            line("storew " + bounds.innerBounds[dimension].first + ", " + firstAddress);
+            line("storew " + bounds.innerBounds[dimension].second + ", " + lastAddress);
+        }
     } else {
         m_context->locals[symbol] = pointer;
-        m_context->bounds[symbol] = { bounds.first, bounds.last };
+        m_context->bounds[symbol] = bounds;
     }
     if (aggregate) {
         assignInto(address, type, object->initializer.get());
     } else if (object->initializer) {
-        Value length = lengthOf(address, type);
-        Value sourceLength = lengthOf(source, object->initializer->type);
-        std::string same = newTemp();
-        line(same + " =w ceqw " + length.name + ", " + sourceLength.name);
-        std::string ok = newLabel("initlengthok");
-        std::string bad = newLabel("initlengthbad");
-        branch(Value { same, 'w' }, ok, bad);
-        label(bad);
-        raiseConstraintError();
-        label(ok);
-        std::string wide = newTemp();
+        checkArrayShape(address, type, source, object->initializer->type);
         std::string size = newTemp();
-        line(wide + " =l extuw " + length.name);
-        line(size + " =l mul " + wide + ", " + std::to_string(typeSize(type->element)));
+        line(size + " =l call $__ada_array_size(w " + address.first + ", w " + address.last + ", l " + elementSize + ")");
+        emitExceptionCheck();
         line("call $memmove(l " + pointer + ", l " + source.name + ", l " + size + ")");
     } else if (hasComponentDefaults(type->element)) {
         emitArrayFill(address, type, nullptr);
@@ -726,6 +754,7 @@ void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
 
 void QbeEmitter::emitArrayFill(const Value& address, Type* type, Expr* value)
 {
+    std::string elementSize = arrayElementSize(address, type);
     Value length = lengthOf(address, type);
     std::string wideLength = newTemp();
     line(wideLength + " =l extuw " + length.name);
@@ -743,13 +772,15 @@ void QbeEmitter::emitArrayFill(const Value& address, Type* type, Expr* value)
     label(body);
     std::string offset = newTemp();
     std::string element = newTemp();
-    line(offset + " =l mul " + index + ", " + std::to_string(typeSize(type->element)));
+    line(offset + " =l mul " + index + ", " + elementSize);
     line(element + " =l add " + address.name + ", " + offset);
+    Value cell = arrayRow(address, type);
+    cell.name = element;
     auto elementStorage = storageCheckpoint();
     if (value != nullptr) {
-        assignInto(Value { element, 'l' }, type->element, value);
+        assignInto(cell, type->element, value);
     } else {
-        emitDefaultInit(Value { element, 'l' }, type->element);
+        emitDefaultInit(cell, type->element);
     }
     rewindStorage(elementStorage);
     std::string next = newTemp();
@@ -1122,9 +1153,18 @@ void QbeEmitter::emitStatement(Stmt* statement)
             if (isUnconstrainedArray(resultType)) {
                 Value value = emitExpr(returnStatement->value.get());
                 value = withBounds(value, returnStatement->value->type, nullptr);
+                std::string elementSize = arrayElementSize(value, returnStatement->value->type);
                 line("call $__ada_array_result(l %.result, l " + value.name + ", w " + value.first
-                     + ", w " + value.last + ", l " + std::to_string(typeSize(resultType->element)) + ")");
+                     + ", w " + value.last + ", l " + elementSize + ")");
                 emitExceptionCheck();
+                for (std::size_t dimension = 0; dimension < value.innerBounds.size(); ++dimension) {
+                    std::string first = newTemp();
+                    std::string last = newTemp();
+                    line(first + " =l add %.result, " + std::to_string(24 + dimension * 8));
+                    line(last + " =l add " + first + ", 4");
+                    line("storew " + value.innerBounds[dimension].first + ", " + first);
+                    line("storew " + value.innerBounds[dimension].second + ", " + last);
+                }
             } else {
                 assignInto(Value { "%.result", 'l' }, resultType, returnStatement->value.get());
             }
@@ -1316,6 +1356,17 @@ void QbeEmitter::assignInto(const Value& address, Type* type, Expr* value)
         return;
     }
     if (type != nullptr && type->kind == TypeKind::Array) {
+        if (type->arrayRank > 1) {
+            Value target = withBounds(address, type, nullptr);
+            Value source = emitExpr(value);
+            checkArrayShape(target, type, source, value->type);
+            std::string elementSize = arrayElementSize(target, type);
+            std::string size = newTemp();
+            line(size + " =l call $__ada_array_size(w " + target.first + ", w " + target.last + ", l " + elementSize + ")");
+            emitExceptionCheck();
+            line("call $memmove(l " + target.name + ", l " + source.name + ", l " + size + ")");
+            return;
+        }
         if (!type->constrained) {
             Value source = emitExpr(value);
             Value targetLength = lengthOf(address, type);
@@ -1509,33 +1560,37 @@ void QbeEmitter::raiseConstraintError()
     }
 }
 
-std::pair<std::string, std::string> QbeEmitter::boundsFor(Symbol* symbol)
+Value QbeEmitter::boundsFor(Symbol* symbol)
 {
     if (symbol->owner == m_context->symbol && symbol->frameOffset < 0) {
         auto it = m_context->bounds.find(symbol);
         if (it != m_context->bounds.end()) {
             return it->second;
         }
-        return { "1", "0" };
     }
-
+    Value result;
     if (symbol->frameOffset < 0) {
-        return { "1", "0" };
+        return result;
     }
-
-    // Unconstrained array parameters keep their bounds behind the pointer in
-    // the owning frame, so nested subprograms can read them too.
     Value frame = symbol->owner == m_context->symbol ? Value { m_context->frameTemp, 'l' }
                                                      : staticLinkFor(symbol->owner->level);
-    std::string firstAddress = newTemp();
-    line(firstAddress + " =l add " + frame.name + ", " + std::to_string(symbol->frameOffset + 8));
-    std::string first = newTemp();
-    line(first + " =w loadsw " + firstAddress);
-    std::string lastAddress = newTemp();
-    line(lastAddress + " =l add " + frame.name + ", " + std::to_string(symbol->frameOffset + 12));
-    std::string last = newTemp();
-    line(last + " =w loadsw " + lastAddress);
-    return { first, last };
+    for (int dimension = 0; dimension < symbol->type->arrayRank; ++dimension) {
+        std::string firstAddress = newTemp();
+        std::string lastAddress = newTemp();
+        std::string first = newTemp();
+        std::string last = newTemp();
+        line(firstAddress + " =l add " + frame.name + ", " + std::to_string(symbol->frameOffset + 8 + dimension * 8));
+        line(lastAddress + " =l add " + firstAddress + ", 4");
+        line(first + " =w loadsw " + firstAddress);
+        line(last + " =w loadsw " + lastAddress);
+        if (dimension == 0) {
+            result.first = first;
+            result.last = last;
+        } else {
+            result.innerBounds.push_back({ first, last });
+        }
+    }
+    return result;
 }
 
 Value QbeEmitter::withBounds(const Value& address, Type* type, Symbol* symbol)
@@ -1547,14 +1602,68 @@ Value QbeEmitter::withBounds(const Value& address, Type* type, Symbol* symbol)
     if (type->constrained) {
         result.first = std::to_string(type->indexLow);
         result.last = std::to_string(type->indexHigh);
-        return result;
-    }
-    if (symbol != nullptr) {
-        std::pair<std::string, std::string> bounds = boundsFor(symbol);
+        result.innerBounds.clear();
+        Type* row = type;
+        for (int dimension = 1; dimension < type->arrayRank; ++dimension) {
+            row = row->element;
+            result.innerBounds.push_back({ std::to_string(row->indexLow), std::to_string(row->indexHigh) });
+        }
+    } else if (symbol != nullptr) {
+        Value bounds = boundsFor(symbol);
         result.first = bounds.first;
-        result.last = bounds.second;
+        result.last = bounds.last;
+        result.innerBounds = bounds.innerBounds;
     }
     return result;
+}
+
+Value QbeEmitter::arrayRow(const Value& array, Type* type)
+{
+    Value row { array.name, 'l' };
+    if (type->arrayRank > 1 && !array.innerBounds.empty()) {
+        row.first = array.innerBounds.front().first;
+        row.last = array.innerBounds.front().second;
+        row.innerBounds.assign(array.innerBounds.begin() + 1, array.innerBounds.end());
+    }
+    return withBounds(row, type->element, nullptr);
+}
+
+std::string QbeEmitter::arrayElementSize(const Value& array, Type* type)
+{
+    if (type->arrayRank == 1 || type->constrained) {
+        return std::to_string(typeSize(type->element));
+    }
+    Value row = arrayRow(array, type);
+    std::string element = arrayElementSize(row, type->element);
+    std::string size = newTemp();
+    line(size + " =l call $__ada_array_size(w " + row.first + ", w " + row.last + ", l " + element + ")");
+    emitExceptionCheck();
+    return size;
+}
+
+void QbeEmitter::checkArrayShape(const Value& target, Type* targetType, const Value& source, Type* sourceType)
+{
+    Value left = withBounds(target, targetType, nullptr);
+    Value right = withBounds(source, sourceType, nullptr);
+    int rank = targetType->arrayRank;
+    for (int dimension = 0; dimension < rank; ++dimension) {
+        Value leftLength = lengthOf(left, targetType);
+        Value rightLength = lengthOf(right, sourceType);
+        std::string same = newTemp();
+        std::string ok = newLabel("shapeok");
+        std::string bad = newLabel("shapebad");
+        line(same + " =w ceqw " + leftLength.name + ", " + rightLength.name);
+        branch(Value { same, 'w' }, ok, bad);
+        label(bad);
+        raiseConstraintError();
+        label(ok);
+        if (dimension + 1 < rank) {
+            left = arrayRow(left, targetType);
+            right = arrayRow(right, sourceType);
+            targetType = targetType->element;
+            sourceType = sourceType->element;
+        }
+    }
 }
 
 Value QbeEmitter::lengthOf(const Value& array, Type* type)
@@ -1646,6 +1755,7 @@ Value QbeEmitter::emitAddress(Expr* expr)
             if (array->arrayRank > 1) {
                 Value address = base;
                 Type* dimension = array;
+                Value axis = base;
                 for (Expr* argument : call->resolvedArguments) {
                     Value index = emitExpr(argument);
                     std::string wide = index.name;
@@ -1653,11 +1763,15 @@ Value QbeEmitter::emitAddress(Expr* expr)
                         wide = newTemp();
                         line(wide + " =l extsw " + index.name);
                     }
+                    std::string lowBound = newTemp();
+                    std::string highBound = newTemp();
+                    line(lowBound + " =l extsw " + axis.first);
+                    line(highBound + " =l extsw " + axis.last);
                     std::string low = newTemp();
                     std::string high = newTemp();
                     std::string valid = newTemp();
-                    line(low + " =w csgel " + wide + ", " + std::to_string(dimension->indexLow));
-                    line(high + " =w cslel " + wide + ", " + std::to_string(dimension->indexHigh));
+                    line(low + " =w csgel " + wide + ", " + lowBound);
+                    line(high + " =w cslel " + wide + ", " + highBound);
                     line(valid + " =w and " + low + ", " + high);
                     std::string ok = newLabel("matrixindexok");
                     std::string bad = newLabel("matrixindexbad");
@@ -1668,10 +1782,12 @@ Value QbeEmitter::emitAddress(Expr* expr)
                     std::string offset = newTemp();
                     std::string scaled = newTemp();
                     std::string next = newTemp();
-                    line(offset + " =l sub " + wide + ", " + std::to_string(dimension->indexLow));
-                    line(scaled + " =l mul " + offset + ", " + std::to_string(typeSize(dimension->element)));
+                    std::string elementSize = arrayElementSize(axis, dimension);
+                    line(offset + " =l sub " + wide + ", " + lowBound);
+                    line(scaled + " =l mul " + offset + ", " + elementSize);
                     line(next + " =l add " + address.name + ", " + scaled);
                     address = Value { next, 'l' };
+                    axis = arrayRow(axis, dimension);
                     dimension = dimension->element;
                 }
                 return address;
@@ -1737,7 +1853,7 @@ bool QbeEmitter::hasComponentDefaults(Type* type)
         return false;
     }
     if (base->kind == TypeKind::Array) {
-        return base->constrained && hasComponentDefaults(base->element);
+        return hasComponentDefaults(type->element);
     }
     if (base->kind != TypeKind::Record) {
         return false;
@@ -1768,7 +1884,12 @@ void QbeEmitter::emitDefaultInit(const Value& address, Type* type)
         return;
     }
 
+    if (type->kind == TypeKind::Array && !type->constrained) {
+        emitArrayFill(address, type, nullptr);
+        return;
+    }
     if (base->kind == TypeKind::Array) {
+        base = type;
         long long count = arrayLength(base);
         long long elementSize = typeSize(base->element);
         for (long long i = 0; i < count; ++i) {
@@ -2103,6 +2224,25 @@ Value QbeEmitter::compareArrays(BinaryOp op, const Value& left, Type* leftType, 
     std::string done = newLabel("comparedone");
     line("storel 0, " + indexSlot);
 
+    if (equality && leftType->arrayRank > 1) {
+        Value leftAxis = left;
+        Value rightAxis = right;
+        Type* leftAxisType = leftType;
+        Type* rightAxisType = rightType;
+        for (int dimension = 1; dimension < leftType->arrayRank; ++dimension) {
+            leftAxis = arrayRow(leftAxis, leftAxisType);
+            rightAxis = arrayRow(rightAxis, rightAxisType);
+            leftAxisType = leftAxisType->element;
+            rightAxisType = rightAxisType->element;
+            std::string leftCount = length(leftAxis, leftAxisType);
+            std::string rightCount = length(rightAxis, rightAxisType);
+            std::string same = newTemp();
+            std::string next = newLabel("compareshape");
+            line(same + " =w ceql " + leftCount + ", " + rightCount);
+            branch(Value { same, 'w' }, next, different);
+            label(next);
+        }
+    }
     if (equality) {
         std::string sameLength = newTemp();
         line(sameLength + " =w ceql " + leftLength + ", " + rightLength);
@@ -2123,13 +2263,18 @@ Value QbeEmitter::compareArrays(BinaryOp op, const Value& left, Type* leftType, 
     auto elementAddress = [&](const Value& array, Type* type) {
         std::string offset = newTemp();
         std::string address = newTemp();
-        line(offset + " =l mul " + index + ", " + std::to_string(typeSize(type->element)));
+        std::string elementSize = arrayElementSize(array, type);
+        line(offset + " =l mul " + index + ", " + elementSize);
         line(address + " =l add " + array.name + ", " + offset);
-        return Value { address, 'l' };
+        Value cell = arrayRow(array, type);
+        cell.name = address;
+        return cell;
     };
     Value leftElement = elementAddress(left, leftType);
     Value rightElement = elementAddress(right, rightType);
-    Value equal = compareObjects(leftElement, rightElement, leftType->element);
+    Value equal = leftType->arrayRank > 1
+        ? compareArrays(BinaryOp::Equal, leftElement, leftType->element, rightElement, rightType->element)
+        : compareObjects(leftElement, rightElement, leftType->element);
     branch(equal, advance, different);
 
     label(advance);
@@ -2275,7 +2420,7 @@ Value QbeEmitter::emitCall(CallExpr* expr)
     bool dynamicResult = isUnconstrainedArray(subprogram->returnType);
     std::string resultStorage;
     if (compositeResult) {
-        resultStorage = allocScratch(dynamicResult ? 24 : std::max(1LL, typeSize(subprogram->returnType)));
+        resultStorage = allocScratch(dynamicResult ? 24 + 8 * (subprogram->returnType->arrayRank - 1) : std::max(1LL, typeSize(subprogram->returnType)));
         arguments.push_back("l " + resultStorage);
     }
     if (subprogram->level > 0) {
@@ -2296,6 +2441,12 @@ Value QbeEmitter::emitCall(CallExpr* expr)
                 }
                 arguments.push_back("w " + (value.first.empty() ? std::string("1") : value.first));
                 arguments.push_back("w " + (value.last.empty() ? std::string("0") : value.last));
+                for (const auto& bounds : value.innerBounds) {
+                    arguments.push_back("w " + bounds.first);
+                    arguments.push_back("w " + bounds.second);
+                }
+            } else if (parameter->type->kind == TypeKind::Array && parameter->type->arrayRank > 1) {
+                checkArrayShape(withBounds(Value {}, parameter->type, nullptr), parameter->type, value, argument->type);
             }
         } else {
             Value value = emitExpr(argument);
@@ -2338,6 +2489,17 @@ Value QbeEmitter::emitCall(CallExpr* expr)
         line("call $__ada_array_adopt(l " + storageArena(true, true) + ", l " + pointer + ")");
         emitExceptionCheck();
         result = Value { pointer, 'l', first, last };
+        for (int dimension = 1; dimension < subprogram->returnType->arrayRank; ++dimension) {
+            std::string firstSlot = newTemp();
+            std::string lastSlot = newTemp();
+            std::string rowFirst = newTemp();
+            std::string rowLast = newTemp();
+            line(firstSlot + " =l add " + resultStorage + ", " + std::to_string(16 + dimension * 8));
+            line(lastSlot + " =l add " + firstSlot + ", 4");
+            line(rowFirst + " =w loadsw " + firstSlot);
+            line(rowLast + " =w loadsw " + lastSlot);
+            result.innerBounds.push_back({ rowFirst, rowLast });
+        }
     } else if (compositeResult) {
         result = withBounds(Value { resultStorage, 'l' }, subprogram->returnType, nullptr);
     }
@@ -2967,6 +3129,12 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
         Type* base = prefixType;
         if (isUnconstrainedArray(base)) {
             Value array = emitExpr(expr->prefix.get());
+            Type* axis = expr->prefix->type;
+            long long dimension = expr->arguments.empty() ? 1 : expr->arguments.front()->staticValue;
+            for (long long i = 1; i < dimension; ++i) {
+                array = arrayRow(array, axis);
+                axis = axis->element;
+            }
             if (name == "length") {
                 return lengthOf(array, base);
             }
@@ -2988,6 +3156,10 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
 Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& address, Type* type)
 {
     bool inferred = !address.hasBounds();
+    if (inferred && type->arrayRank > 1) {
+        m_diagnostics.error(expr->location, "multidimensional aggregates currently require explicit target bounds");
+        return Value { "0", 'l' };
+    }
     if (inferred) {
         for (const AggregateComponent& component : expr->components) {
             if (component.isOthers) {
@@ -3119,10 +3291,11 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
     }
     std::string resultFirst = inferred ? first : address.first;
     std::string resultLast = inferred ? last : address.last;
+    std::string elementSize = arrayElementSize(address, type);
     std::string buffer = newTemp();
     line(buffer + " =l call $__ada_array_local(l " + storageArena(true, true)
          + ", w " + resultFirst + ", w " + resultLast + ", l "
-         + std::to_string(typeSize(type->element)) + ")");
+         + elementSize + ")");
     emitExceptionCheck();
     std::string slot = allocScratch(8);
     line("storel 0, " + slot);
@@ -3141,11 +3314,13 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
     std::string scaled = newTemp();
     std::string element = newTemp();
     line(index + " =l add " + first + ", " + offset);
-    line(scaled + " =l mul " + offset + ", " + std::to_string(typeSize(type->element)));
+    line(scaled + " =l mul " + offset + ", " + elementSize);
     line(element + " =l add " + buffer + ", " + scaled);
     auto fill = [&](Expr* value) {
         auto checkpoint = storageCheckpoint();
-        assignInto(Value { element, 'l' }, type->element, value);
+        Value cell = arrayRow(address, type);
+        cell.name = element;
+        assignInto(cell, type->element, value);
         rewindStorage(checkpoint);
         jump(next);
     };
@@ -3175,11 +3350,13 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
     jump(head);
     label(done);
     std::string size = newTemp();
-    line(size + " =l mul " + wideLength + ", " + std::to_string(typeSize(type->element)));
+    line(size + " =l mul " + wideLength + ", " + elementSize);
     if (!inferred) {
         line("call $memmove(l " + address.name + ", l " + buffer + ", l " + size + ")");
     }
-    return Value { buffer, 'l', resultFirst, resultLast };
+    Value result { buffer, 'l', resultFirst, resultLast };
+    result.innerBounds = address.innerBounds;
+    return result;
 }
 
 void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Type* type)

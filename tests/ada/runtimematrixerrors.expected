@@ -1,0 +1,7 @@
+runtimematrixerrors.adb:4:5: error: an unconstrained array object needs an initializer or index constraint
+runtimematrixerrors.adb:5:11: error: index constraint count must match the array rank
+runtimematrixerrors.adb:6:12: error: index constraint count must match the array rank
+runtimematrixerrors.adb:7:24: error: index constraints must be static
+runtimematrixerrors.adb:9:17: error: record components require a constrained array subtype
+runtimematrixerrors.adb:12:13: error: an index constraint requires an unconstrained array subtype
+runtimematrixerrors.adb:14:16: error: array bound attributes require an object or a constrained array subtype
