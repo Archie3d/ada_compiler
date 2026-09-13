@@ -1,6 +1,6 @@
 #include "Sema.h"
 #include "SemaSupport.h"
-
+#include <cstdint>
 #include <limits>
 
 using SemaSupport::isUniversal;
