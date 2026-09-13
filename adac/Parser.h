@@ -22,6 +22,7 @@ private:
     {
     };
 
+    // Token navigation and compilation units (Parser.cpp).
     const Token& current() const;
     const Token& peek(int offset) const;
     bool check(TokenKind kind) const;
@@ -30,38 +31,41 @@ private:
     const Token& expect(TokenKind kind, const char* context);
     [[noreturn]] void fail(const std::string& message);
     void skipToSemicolon();
-
-    // Declarations.
     void parseContextClause(CompilationUnit& unit);
     DeclPtr parseLibraryUnit();
+
+    // Declarations (ParserDecl.cpp).
     DeclList parseDeclarativePart(bool stopAtPrivate = false);
     DeclPtr parseDeclarativeItem();
     DeclPtr parseObjectOrNumberDecl();
-    DeclPtr parseTypeDecl();
-    DeclPtr parseSubtypeDecl();
-    DeclPtr parseSubprogramDeclOrBody();
-    DeclPtr parsePackage();
     DeclPtr parseUseClause();
-    DeclPtr parseGenericDeclaration();
-    DeclPtr parseGenericInstantiation(const SourceLocation& location, const std::string& name,
-                                      const std::string& lower, bool isPackage);
     DeclPtr parsePragma();
     DeclPtr parseRepresentationClause();
 
-    SubprogramSpec parseSubprogramSpec();
-    void parseParameterList(SubprogramSpec& spec);
+    // Types and ranges (ParserTypes.cpp).
+    DeclPtr parseTypeDecl();
+    DeclPtr parseSubtypeDecl();
     TypeDefinitionPtr parseTypeDefinition();
     void parseDiscriminantPart(std::vector<RecordField>& discriminants);
     void parseRecordComponents(std::vector<RecordField>& fields);
     VariantPartPtr parseVariantPart();
     SubtypeIndicationPtr parseSubtypeIndication();
-    std::vector<std::string> parseIdentifierList(std::vector<std::string>& lowered);
-    std::string parseCompoundName(std::string& lowered);
-    std::string parseSubtypeMark(std::string& lowered);
+    void parseDiscreteRange(std::string& typeName, std::string& typeLower, ExprPtr& low, ExprPtr& high);
 
-    void parseClosingName(const std::string& lower, bool allowSimpleName = false);
+    // Subprograms (ParserSubprograms.cpp).
+    SubprogramSpec parseSubprogramSpec();
+    void parseParameterList(SubprogramSpec& spec);
+    DeclPtr parseSubprogramDeclOrBody();
 
-    // Statements.
+    // Packages (ParserPackages.cpp).
+    DeclPtr parsePackage();
+
+    // Generics (ParserGenerics.cpp).
+    DeclPtr parseGenericDeclaration();
+    DeclPtr parseGenericInstantiation(const SourceLocation& location, const std::string& name,
+                                      const std::string& lower, bool isPackage);
+
+    // Statements (ParserStatements.cpp).
     StmtList parseSequenceOfStatements();
     std::vector<ExceptionHandler> parseExceptionHandlers();
     StmtPtr parseStatement();
@@ -72,18 +76,23 @@ private:
     StmtPtr parseExitStatement();
     StmtPtr parseReturnStatement();
     StmtPtr parseRaiseStatement();
-    void parseDiscreteRange(std::string& typeName, std::string& typeLower, ExprPtr& low, ExprPtr& high);
 
-    // Expressions.
+    // Expressions (ParserExpr.cpp).
     ExprPtr parseExpression();
     ExprPtr parseRelation();
     ExprPtr parseSimpleExpression();
     ExprPtr parseTerm();
     ExprPtr parseFactor();
     ExprPtr parsePrimary();
-    ExprPtr parseNameSuffixes(ExprPtr prefix);
     ExprPtr parseParenthesizedOrAggregate();
     ExprPtr makeBinary(BinaryOp op, ExprPtr left, ExprPtr right, const SourceLocation& location);
+
+    // Names (ParserNames.cpp).
+    std::vector<std::string> parseIdentifierList(std::vector<std::string>& lowered);
+    std::string parseCompoundName(std::string& lowered);
+    std::string parseSubtypeMark(std::string& lowered);
+    void parseClosingName(const std::string& lower, bool allowSimpleName = false);
+    ExprPtr parseNameSuffixes(ExprPtr prefix);
 
     std::vector<Token> m_tokens;
     Diagnostics& m_diagnostics;

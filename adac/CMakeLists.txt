@@ -9,7 +9,15 @@ target_sources(${TARGET}
         ${CMAKE_CURRENT_SOURCE_DIR}/Diagnostics.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Token.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Lexer.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Parser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/Parser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserDecl.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserSubprograms.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserPackages.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserGenerics.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserStatements.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserExpr.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/ParserNames.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Type.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Scope.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/sema/Sema.cpp
