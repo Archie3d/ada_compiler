@@ -190,7 +190,8 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
         if (!numeric && !typesCompatible(expr->type, operand->type)) {
             m_diagnostics.error(expr->location, "this type conversion is not allowed");
         }
-        if (operand->isStatic && isReal(expr->type) == isReal(operand->type)) {
+        if (operand->isStatic && expr->type->m_scalarBoundsSymbol == nullptr
+            && isReal(expr->type) == isReal(operand->type)) {
             expr->isStatic = true;
             expr->staticValue = operand->staticValue;
             expr->staticReal = operand->staticReal;

@@ -162,17 +162,8 @@ void Sema::analyzeStatement(Stmt* statement, Scope* scope)
                 adaptUniversal(loop->rangeLow.get(), variableType);
                 adaptUniversal(loop->rangeHigh.get(), variableType);
             } else if (variableType != nullptr) {
-                auto makeBound = [&](long long value) {
-                    auto literal = std::make_unique<IntegerLiteralExpr>();
-                    literal->location = loop->location;
-                    literal->value = value;
-                    literal->type = variableType;
-                    literal->isStatic = true;
-                    literal->staticValue = value;
-                    return ExprPtr(std::move(literal));
-                };
-                loop->rangeLow = makeBound(variableType->low);
-                loop->rangeHigh = makeBound(variableType->high);
+                loop->rangeLow = scalarBoundExpr(variableType, true, loop->location);
+                loop->rangeHigh = scalarBoundExpr(variableType, false, loop->location);
             }
             if (variableType == nullptr) {
                 variableType = m_types.integerType();
@@ -289,6 +280,9 @@ void Sema::analyzeCaseStatement(CaseStmt* statement, Scope* scope)
         adaptUniversal(statement->selector.get(), selectorType);
     }
 
+    if (selectorType != nullptr && selectorType->m_scalarBoundsSymbol != nullptr) {
+        selectorType = m_types.scalarBaseType(selectorType);
+    }
     bool discrete = selectorType != nullptr && isDiscrete(selectorType);
     if (selectorType != nullptr && !discrete) {
         m_diagnostics.error(statement->selector->location,

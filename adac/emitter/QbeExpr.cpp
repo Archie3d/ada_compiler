@@ -173,8 +173,13 @@ Value QbeEmitter::emitExpr(Expr* expr)
         return emitAttribute(static_cast<AttributeExpr*>(expr));
     case ExprKind::Aggregate:
         return emitAggregate(static_cast<AggregateExpr*>(expr));
-    case ExprKind::Qualified:
-        return emitExpr(static_cast<QualifiedExpr*>(expr)->operand.get());
+    case ExprKind::Qualified: {
+        Value value = emitExpr(static_cast<QualifiedExpr*>(expr)->operand.get());
+        if (expr->type->m_scalarBoundsSymbol != nullptr) {
+            emitRangeCheck(value, expr->type, expr->location);
+        }
+        return value;
+    }
 
     case ExprKind::Membership: {
         auto* membership = static_cast<MembershipExpr*>(expr);

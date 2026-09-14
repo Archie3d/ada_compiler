@@ -1,7 +1,6 @@
 runtimearraytypeerrors.adb:4:22: error: an index constraint requires an unconstrained array subtype
 runtimearraytypeerrors.adb:6:29: error: an index constraint requires an unconstrained array subtype
 runtimearraytypeerrors.adb:7:27: error: index constraint count must match the array rank
-runtimearraytypeerrors.adb:8:23: error: range constraints must be static
 runtimearraytypeerrors.adb:10:17: error: runtime-constrained record components are not yet supported
 runtimearraytypeerrors.adb:12:36: error: runtime-constrained array components are not yet supported
 runtimearraytypeerrors.adb:14:28: error: array index bounds have an incompatible type

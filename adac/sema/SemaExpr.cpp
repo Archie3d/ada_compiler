@@ -74,7 +74,7 @@ Type* Sema::analyzeExpr(Expr* expr, Scope* scope, Type* expected)
         analyzeExpr(qualified->operand.get(), scope, type);
         adaptUniversal(qualified->operand.get(), type);
         expr->type = type;
-        expr->isStatic = qualified->operand->isStatic;
+        expr->isStatic = qualified->operand->isStatic && type != nullptr && type->m_scalarBoundsSymbol == nullptr;
         expr->staticValue = qualified->operand->staticValue;
         expr->staticReal = qualified->operand->staticReal;
         return type;
@@ -319,26 +319,22 @@ Type* Sema::analyzeUnary(UnaryExpr* expr, Scope* scope, Type* expected)
 
 Type* Sema::analyzeMembership(MembershipExpr* expr, Scope* scope)
 {
-    Type* operand = analyzeExpr(expr->operand.get(), scope, nullptr);
+    Type* mark = expr->typeLower.empty() ? nullptr
+        : resolveTypeName(expr->typeLower, scope, expr->location);
+    Type* operand = analyzeExpr(expr->operand.get(), scope, mark);
     if (isUniversal(operand)) {
         operand = m_types.integerType();
         adaptUniversal(expr->operand.get(), operand);
     }
 
     if (!expr->typeLower.empty()) {
-        Type* type = resolveTypeName(expr->typeLower, scope, expr->location);
+        Type* type = mark;
         if (type != nullptr) {
-            auto makeBound = [&](long long value) {
-                auto literal = std::make_unique<IntegerLiteralExpr>();
-                literal->location = expr->location;
-                literal->value = value;
-                literal->type = operand;
-                literal->isStatic = true;
-                literal->staticValue = value;
-                return ExprPtr(std::move(literal));
-            };
-            expr->low = makeBound(type->low);
-            expr->high = makeBound(type->high);
+            if (!isDiscrete(type) || !typesCompatible(type, operand)) {
+                m_diagnostics.error(expr->location, "membership subtype must match the operand's discrete type");
+            }
+            expr->low = scalarBoundExpr(type, true, expr->location);
+            expr->high = scalarBoundExpr(type, false, expr->location);
         }
     } else {
         analyzeExpr(expr->low.get(), scope, operand);

@@ -71,6 +71,7 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
     if (name == "value") {
         Value text = emitExpr(expr->arguments.front().get());
         Value length = lengthOf(text, expr->arguments.front()->type);
+        Value bounds = scalarBounds(prefixType);
         Type* base = baseType(prefixType);
         std::string temp = newTemp();
         if (base != nullptr && base->kind == TypeKind::Enumeration && !base->literals.empty()) {
@@ -81,16 +82,23 @@ Value QbeEmitter::emitAttribute(AttributeExpr* expr)
             line(temp + " =w call $__ada_value_character(l " + text.name + ", w " + length.name + ")");
         } else if (qbeClass(prefixType) == 'l') {
             line(temp + " =l call $__ada_value_long_integer(l " + text.name + ", w " + length.name + ", l "
-                 + std::to_string(prefixType->low) + ", l " + std::to_string(prefixType->high) + ")");
+                 + bounds.first + ", l " + bounds.last + ")");
         } else {
             line(temp + " =w call $__ada_value_integer(l " + text.name + ", w " + length.name + ", w "
-                 + std::to_string(prefixType->low) + ", w " + std::to_string(prefixType->high) + ")");
+                 + bounds.first + ", w " + bounds.last + ")");
         }
         emitExceptionCheck();
+        if (prefixType->m_scalarBoundsSymbol != nullptr) {
+            emitRangeCheck(Value { temp, qbeClass(prefixType) }, prefixType, expr->location);
+        }
         return Value { temp, qbeClass(prefixType) };
     }
     if (name == "first" || name == "last" || name == "length") {
         Type* base = prefixType;
+        if (base != nullptr && isDiscrete(base) && base->m_scalarBoundsSymbol != nullptr) {
+            Value bounds = scalarBounds(base);
+            return Value { name == "first" ? bounds.first : bounds.last, bounds.type };
+        }
         if (isUnconstrainedArray(base)) {
             Value array = emitExpr(expr->prefix.get());
             Type* axis = expr->prefix->type;

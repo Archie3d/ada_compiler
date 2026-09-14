@@ -152,6 +152,13 @@ void Sema::analyzeTypeDecl(TypeDecl* decl, Scope* scope)
             } else if (indexType != nullptr && row->constrained) {
                 row->indexLow = indexType->low;
                 row->indexHigh = indexType->high;
+                if (indexType->m_scalarBoundsSymbol != nullptr) {
+                    index->rangeLow = scalarBoundExpr(indexType, true, index->location);
+                    index->rangeHigh = scalarBoundExpr(indexType, false, index->location);
+                }
+            }
+            if (indexType != nullptr && indexType->m_scalarBoundsSymbol != nullptr && row->constrained) {
+                dynamicBounds = true;
             }
             type->m_boundExpressions.push_back({ index->rangeLow.get(), index->rangeHigh.get() });
             if (dimension + 1 == rank) {
@@ -270,7 +277,8 @@ void Sema::analyzeTypeDecl(TypeDecl* decl, Scope* scope)
 
 void Sema::analyzeSubtypeDecl(SubtypeDecl* decl, Scope* scope)
 {
-    Type* base = resolveSubtypeIndication(decl->subtype.get(), scope, m_currentSubprogram != nullptr);
+    Type* base = resolveSubtypeIndication(decl->subtype.get(), scope, m_currentSubprogram != nullptr,
+                                               m_currentSubprogram != nullptr);
     if (base == nullptr) {
         return;
     }
@@ -279,6 +287,14 @@ void Sema::analyzeSubtypeDecl(SubtypeDecl* decl, Scope* scope)
     Symbol* symbol = m_symbolTable.createSymbol(SymbolKind::TypeName, decl->lower, decl->name);
     symbol->type = type;
     symbol->location = decl->location;
+    if (decl->subtype->rangeLow != nullptr && base->m_scalarLow != nullptr) {
+        type->m_scalarBoundsSymbol = symbol;
+        type->m_scalarLow = base->m_scalarLow;
+        type->m_scalarHigh = base->m_scalarHigh;
+        type->m_scalarConstraintBase = base->m_scalarConstraintBase;
+        symbol->owner = m_currentSubprogram;
+        m_currentSubprogram->needsFrame = true;
+    }
     if (type->kind == TypeKind::Array && !type->constrained
         && !decl->subtype->indexLows.empty() && m_currentSubprogram != nullptr) {
         type->m_boundsSymbol = symbol;
@@ -464,7 +480,7 @@ void Sema::analyzeRepresentation(RepresentationDecl* decl, Scope* scope)
     symbol->type->byteSize = static_cast<int>(bits / 8);
 }
 
-Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope, bool allowDynamic)
+Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope, bool allowDynamic, bool allowDynamicScalar)
 {
     if (indication == nullptr) {
         return nullptr;
@@ -507,13 +523,27 @@ Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope
     }
 
     if (indication->rangeLow && indication->rangeHigh) {
-        analyzeExpr(indication->rangeLow.get(), scope, base);
-        analyzeExpr(indication->rangeHigh.get(), scope, base);
+        Type* lowType = analyzeExpr(indication->rangeLow.get(), scope, base);
+        Type* highType = analyzeExpr(indication->rangeHigh.get(), scope, base);
+        if (!isDiscrete(base) || !typesCompatible(base, lowType) || !typesCompatible(base, highType)) {
+            m_diagnostics.error(indication->location, "range bounds must have the subtype's discrete type");
+            return base;
+        }
         long long low = 0;
         long long high = 0;
-        if (!foldStatic(indication->rangeLow.get(), low) || !foldStatic(indication->rangeHigh.get(), high)) {
-            m_diagnostics.error(indication->location, "range constraints must be static");
-            return base;
+        bool staticLow = foldStatic(indication->rangeLow.get(), low);
+        bool staticHigh = foldStatic(indication->rangeHigh.get(), high);
+        if (!staticLow || !staticHigh || base->m_scalarBoundsSymbol != nullptr) {
+            if (!allowDynamicScalar) {
+                m_diagnostics.error(indication->location, "runtime scalar constraints require a local subtype declaration");
+                return base;
+            }
+            Type* subtype = m_types.makeSubtype(anonymousTypeName(), base, base->low, base->high);
+            subtype->m_scalarLow = indication->rangeLow.get();
+            subtype->m_scalarHigh = indication->rangeHigh.get();
+            subtype->m_scalarConstraintBase = base;
+            indication->resolved = subtype;
+            return subtype;
         }
         Type* subtype = m_types.makeSubtype(anonymousTypeName(), base, low, high);
         indication->resolved = subtype;
@@ -561,7 +591,7 @@ Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope
                 }
                 bool staticLow = foldStatic(low, row->indexLow);
                 bool staticHigh = foldStatic(high, row->indexHigh);
-                allStatic = allStatic && staticLow && staticHigh;
+                allStatic = allStatic && staticLow && staticHigh && original->index->m_scalarBoundsSymbol == nullptr;
                 rows.push_back(row);
                 if (dimension + 1 < array->arrayRank) {
                     original = original->element;
@@ -603,6 +633,7 @@ Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope
             }
             ok = ok && foldStatic(indication->indexHighs.front().get(), high);
         }
+        ok = ok && array->index->m_scalarBoundsSymbol == nullptr;
         if (!ok && allowDynamic && indication->indexHighs.front() != nullptr) {
             if (!isDiscrete(indication->indexLows.front()->type)
                 || !isDiscrete(indication->indexHighs.front()->type)) {
@@ -733,4 +764,30 @@ bool Sema::typesCompatible(Type* target, Type* source) const
         return left->arrayRank == right->arrayRank && rootType(left->element) == rootType(right->element);
     }
     return false;
+}
+
+// Synthesized bounds retain a subtype reference rather than copying a dynamic
+// subtype's placeholder limits into loops, membership tests, or array types.
+ExprPtr Sema::scalarBoundExpr(Type* type, bool first, const SourceLocation& location)
+{
+    if (type->m_scalarBoundsSymbol == nullptr) {
+        auto literal = std::make_unique<IntegerLiteralExpr>();
+        literal->location = location;
+        literal->value = first ? type->low : type->high;
+        literal->type = type;
+        literal->isStatic = true;
+        literal->staticValue = literal->value;
+        return literal;
+    }
+    auto prefix = std::make_unique<IdentifierExpr>();
+    prefix->location = location;
+    prefix->type = type;
+    prefix->symbol = type->m_scalarBoundsSymbol;
+    auto attribute = std::make_unique<AttributeExpr>();
+    attribute->location = location;
+    attribute->prefix = std::move(prefix);
+    attribute->prefixType = type;
+    attribute->type = type;
+    attribute->name = attribute->lower = first ? "first" : "last";
+    return attribute;
 }

@@ -102,6 +102,13 @@ public:
     long long low = 0;
     long long high = 0;
 
+    // Named local scalar constraints use full-width bounds in the owning
+    // activation. Aliases share the symbol; only the declaration owns expressions.
+    Symbol* m_scalarBoundsSymbol = nullptr;
+    struct Expr* m_scalarLow = nullptr;
+    struct Expr* m_scalarHigh = nullptr;
+    Type* m_scalarConstraintBase = nullptr;
+
     // Enumeration types.
     std::vector<std::string> literals;
 

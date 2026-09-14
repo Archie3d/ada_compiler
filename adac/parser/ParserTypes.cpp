@@ -357,7 +357,9 @@ void Parser::parseDiscreteRange(std::string& typeName, std::string& typeLower, E
         // name that something follows, as in 'Length + 1 .. Width', starts an
         // expression like any other.
         if (check(TokenKind::KwLoop) || check(TokenKind::Semicolon) || check(TokenKind::RightParen)
-            || check(TokenKind::Comma) || check(TokenKind::Arrow) || check(TokenKind::Bar)) {
+            || check(TokenKind::Comma) || check(TokenKind::Arrow) || check(TokenKind::Bar)
+            || check(TokenKind::KwThen) || check(TokenKind::KwAnd) || check(TokenKind::KwOr)
+            || check(TokenKind::KwXor)) {
             typeName = name;
             typeLower = lowered;
             return;

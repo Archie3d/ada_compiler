@@ -61,7 +61,8 @@ private:
     void layoutRecord(TypeDecl* decl, TypeDefinition* definition, Type* type, Scope* scope);
     void reportIncompleteTypes(DeclList& declarations);
     void analyzeRepresentation(RepresentationDecl* decl, Scope* scope);
-    Type* resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope, bool allowDynamic = false);
+    Type* resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope, bool allowDynamic = false,
+                                  bool allowDynamicScalar = false);
     Type* constrainDiscriminants(SubtypeIndication* indication, Type* base, Scope* scope);
     bool hasKnownDiscriminants(Type* type) const;
     bool discriminantValue(Type* type, int index, long long& value) const;
@@ -108,6 +109,7 @@ private:
     bool checkAggregateDiscriminants(AggregateExpr* expr, Type* target, Scope* scope);
 
     // SemaStatic.cpp
+    ExprPtr scalarBoundExpr(Type* type, bool first, const SourceLocation& location);
     bool foldStatic(Expr* expr, long long& value) const;
     bool foldStaticReal(Expr* expr, double& value) const;
     void noteStaticValue(Expr* expr);

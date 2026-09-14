@@ -146,6 +146,10 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
     }
 
     if (name == "read" || name == "write" || name == "input" || name == "output") {
+        if (base != nullptr && base->m_scalarBoundsSymbol != nullptr) {
+            m_diagnostics.error(expr->location, "stream attributes for runtime scalar subtypes are not yet supported");
+            return nullptr;
+        }
         if (base != nullptr && base->m_boundsSymbol != nullptr) {
             m_diagnostics.error(expr->location, "stream attributes for runtime-constrained array subtypes are not yet supported");
             return nullptr;
@@ -207,7 +211,7 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
         }
         if (isDiscrete(base)) {
             expr->type = prefixType;
-            expr->isStatic = true;
+            expr->isStatic = prefixType->m_scalarBoundsSymbol == nullptr;
             expr->staticValue = name == "first" ? prefixType->low : prefixType->high;
             return expr->type;
         }
@@ -261,7 +265,7 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
         Type* argumentType = name == "val" ? m_types.universalInteger() : prefixType;
         adaptUniversal(expr->arguments.front().get(), argumentType);
         expr->type = prefixType;
-        if (expr->arguments.front()->isStatic) {
+        if (expr->arguments.front()->isStatic && prefixType->m_scalarBoundsSymbol == nullptr) {
             long long value = expr->arguments.front()->staticValue;
             bool overflow = name == "succ" ? __builtin_add_overflow(value, 1LL, &value)
                 : (name == "pred" && __builtin_sub_overflow(value, 1LL, &value));
@@ -321,6 +325,11 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
         }
         expr->type = m_types.integerType();
         expr->isStatic = true;
+        if (prefixType->m_scalarBoundsSymbol != nullptr) {
+            expr->isStatic = false;
+            m_diagnostics.error(expr->location, "'Width for runtime scalar subtypes is not yet supported");
+            return nullptr;
+        }
         expr->staticValue = widthOf(prefixType);
         return expr->type;
     }

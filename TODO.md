@@ -100,12 +100,19 @@ self-overlapping slice assignment.
 
 ### Calls, exceptions, and elaboration
 
-Primary code: `adac/QbeEmitter.cpp`, `adac/sema/SemaCalls.cpp`,
-`adac/sema/SemaStatements.cpp`, `adac/sema/SemaPackages.cpp`, `adac/UnitLoader.cpp`.
+Primary code: `adac/emitter/QbeCalls.cpp`, `adac/emitter/QbeFunctions.cpp`,
+`adac/emitter/QbeStatements.cpp`, `adac/sema/SemaCalls.cpp`,
+`adac/sema/SemaDecl.cpp`, `adac/sema/SemaPackages.cpp`, `adac/UnitLoader.cpp`.
 
-- [ ] Implement scalar `out`/`in out` copy-in/copy-out behavior and checks on the
-  actual object's subtype. The current implementation passes all writable
-  parameters by reference. Treat composite parameter mechanisms separately.
+- [ ] Implement Ada scalar `out`/`in out` copy-in/copy-out behavior (suggested
+  next step). Give each formal its own value storage, initialize it according
+  to its mode, and check the actual object's subtype when copying back on normal
+  return. Propagated exceptions must skip copy-back. The current implementation
+  passes all writable parameters by reference, allowing writes through a wider
+  formal to bypass a narrower actual's constraint. Test static and runtime
+  actual subtypes, failed copy-in/copy-back, nested calls, aliased actuals,
+  handlers, and exceptional returns. Keep imported C conventions and composite
+  parameter mechanisms separate.
 - [x] Diagnose value returns from procedures, bare returns from functions, and
   returns outside subprograms. Every result representation now raises
   `Program_Error` on fallthrough, including after a handled exception. Covered
@@ -193,15 +200,21 @@ sizes, signed small representations, invalid size clauses, and unsupported impor
   exception propagation, while preserving enclosing objects and a block's
   locals during its own handler. Local arrays and temporaries use separate
   checkpointed allocation lists (`arraylifetimes.adb`).
-- [ ] Local runtime discrete scalar subtype bounds (suggested next step).
-  Start with integer and enumeration subtypes, such as
-  `subtype Index is Integer range 1 .. N`. Save bounds once per elaboration,
-  preserve them through aliases and nested calls, and use them for scalar
-  constraint checks, `'First`/`'Last`/`'Range`, membership, loops, and array index
-  subtypes (`type Vector is array (Index) of Integer`). Cover changing source
-  variables, side effects, recursion, block re-entry, null ranges, and failures
-  during elaboration or value checks. Runtime real subtypes and scalar
-  `out`/`in out` copy-back semantics remain separate follow-ups.
+- [x] Local named runtime discrete scalar subtype bounds, including `Integer`,
+  `Long_Integer`, and enumeration subtypes. Save checked bounds once per
+  elaboration; preserve them through aliases, nested routines/packages,
+  recursion, and block re-entry. Apply them to initialization, assignment,
+  conversions/qualification, input parameters/defaults, results, attributes
+  (`'First`/`'Last`/`'Range`), membership, loops, and array index subtypes.
+  Array aggregate inference uses the saved index lower bound. Non-null ranges
+  check compatibility with the parent subtype; null ranges are allowed.
+  Covered by `runtimescalars.adb` and `runtimescalarchecks.adb`; static-context,
+  type, and unsupported-context diagnostics are in `runtimescalarerrors.adb`
+  and `runtimescalarlibraryerrors.ads`.
+- [ ] Extend runtime scalar constraints to anonymous subtype indications,
+  library declarations, real subtypes, `'Width`, and streaming. These cases
+  remain diagnosed. Scalar `out`/`in out` copy-back is the next correctness step
+  listed under Calls, exceptions, and elaboration.
 - [ ] Library-level dynamic arrays/types. Unsupported cases have diagnostics in
   `runtimearraylibraryerrors.ads`; local named array constraints are implemented
   below.
@@ -370,11 +383,12 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next step: local runtime discrete scalar subtype bounds, including their
-use as array index subtypes. This extends the saved-bound elaboration machinery
-from the completed local runtime array subtype/type-bound checkpoint and removes
-the need to repeat explicit ranges on each array declaration. Keep this step
-local and discrete; library-level dynamic arrays, runtime-constrained components,
-and wider descriptor indices/lengths remain separate follow-ups.
+Suggested next step: Ada scalar `out`/`in out` copy-in/copy-out with checks on
+actual-object subtypes. Runtime discrete subtype bounds are now implemented;
+correct copy-back is needed to prevent wider formals from bypassing those checks.
+Start with Ada scalar calls and normal/exceptional return behavior; leave imported
+C conventions and composite parameter mechanisms separate. Library-level dynamic
+arrays, runtime-constrained components, and wider descriptor indices/lengths
+remain later array follow-ups.
 Modular types can be developed as a separate bounded extension after the numeric
 follow-up checks.

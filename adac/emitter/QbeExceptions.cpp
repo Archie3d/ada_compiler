@@ -147,14 +147,31 @@ void QbeEmitter::emitRangeCheck(const Value& value, Type* type, const SourceLoca
     if (type == nullptr || !isDiscrete(type)) {
         return;
     }
-    char type_ = value.type;
+    Value bounds = scalarBounds(type);
+    Value checked = value;
+    char width = value.type;
+    if (type->m_scalarBoundsSymbol != nullptr && (value.type == 'l' || bounds.type == 'l')) {
+        width = 'l';
+        if (checked.type == 'w') {
+            checked.name = newTemp();
+            line(checked.name + " =l extsw " + value.name);
+        }
+        if (bounds.type == 'w') {
+            std::string low = newTemp();
+            std::string high = newTemp();
+            line(low + " =l extsw " + bounds.first);
+            line(high + " =l extsw " + bounds.last);
+            bounds.first = low;
+            bounds.last = high;
+        }
+    }
     std::string lowTest = newTemp();
     std::string highTest = newTemp();
     std::string combined = newTemp();
-    line(lowTest + " =w " + comparisonInstruction(BinaryOp::GreaterEqual, type_) + " " + value.name + ", "
-         + std::to_string(type->low));
-    line(highTest + " =w " + comparisonInstruction(BinaryOp::LessEqual, type_) + " " + value.name + ", "
-         + std::to_string(type->high));
+    line(lowTest + " =w " + comparisonInstruction(BinaryOp::GreaterEqual, width) + " " + checked.name + ", "
+         + bounds.first);
+    line(highTest + " =w " + comparisonInstruction(BinaryOp::LessEqual, width) + " " + checked.name + ", "
+         + bounds.last);
     line(combined + " =w and " + lowTest + ", " + highTest);
 
     std::string ok = newLabel("inrange");

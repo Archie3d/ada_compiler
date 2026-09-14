@@ -81,6 +81,18 @@ void QbeEmitter::emitStatement(Stmt* statement)
             Value low = emitExpr(loop->rangeLow.get());
             Value high = emitExpr(loop->rangeHigh.get());
             char type = qbeClass(variable->type);
+            if (variable->type->m_scalarBoundsSymbol != nullptr) {
+                std::string nonNull = newTemp();
+                std::string check = newLabel("looprangecheck");
+                std::string ready = newLabel("looprangeready");
+                line(nonNull + " =w csge" + type + " " + high.name + ", " + low.name);
+                branch(Value { nonNull, 'w' }, check, ready);
+                label(check);
+                emitRangeCheck(low, variable->type, loop->location);
+                emitRangeCheck(high, variable->type, loop->location);
+                jump(ready);
+                label(ready);
+            }
             std::string boundSlot = allocScratch(type == 'l' ? 8 : 4);
             Value address = addressOf(variable);
             storeInto(address, loop->isReverse ? high : low, variable->type);

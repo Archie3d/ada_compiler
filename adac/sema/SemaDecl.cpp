@@ -143,7 +143,7 @@ void Sema::analyzeObjectDecl(ObjectDecl* decl, Scope* scope)
         if (symbol->isGlobal) {
             symbol->qbeName = "$" + mangle(decl->namesLower[i]);
         }
-        if (decl->isConstant && decl->initializer) {
+        if (decl->isConstant && decl->initializer && type->m_scalarBoundsSymbol == nullptr) {
             long long value = 0;
             double realValue = 0.0;
             if (isReal(type) && foldStaticReal(decl->initializer.get(), realValue)) {

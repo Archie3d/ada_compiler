@@ -268,10 +268,43 @@ Parameters and results check dimension lengths and slide to the declared bounds.
 Declaring a type allocates no array data; each dimension is limited to
 `Integer'Last` elements, with larger lengths raising `Storage_Error`.
 
-Runtime scalar subtypes, library-level runtime array declarations, components and
-allocators using runtime-constrained array subtypes, and `'Size` and streaming for
-those subtypes remain unsupported and diagnosed. Stream attributes for
-unconstrained multidimensional arrays also remain unsupported.
+Library-level runtime array declarations, components and allocators using
+runtime-constrained array subtypes, and `'Size` and streaming for those subtypes
+remain unsupported and diagnosed. Stream attributes for unconstrained
+multidimensional arrays also remain unsupported.
+
+Local integer and enumeration subtype declarations can use runtime ranges,
+including 64-bit `Long_Integer` bounds:
+
+```ada
+subtype Index is Integer range 2 .. N;
+subtype Alias_Index is Index;
+type Vector is array (Index) of Integer;
+X : Index := N;
+A : Vector := (others => 0);
+```
+
+Each elaboration saves the bounds once; aliases share them and subsequent changes
+to `N` do not alter the subtype. Bounds survive nested calls, local packages,
+recursion, and block re-entry. Initialization, assignment, conversions, qualified
+expressions, scalar input arguments/defaults, and function results use the saved
+constraints. `'First`, `'Last`, `'Range`, membership, and loops use them too;
+`'Base` retains the underlying type's unconstrained scalar range. Array types and
+aggregate inference can use these subtypes as indices, within the existing
+32-bit array descriptor limits.
+
+A non-null range must fit its parent subtype; a null range is allowed even when
+its bounds lie outside that subtype, following the
+[Ada scalar range rules](https://www.adaic.org/resources/add_content/standards/95lrm/ARM_HTML/RM-3-5.html).
+Failures during declaration elaboration propagate to the enclosing handler.
+Runtime bounds and constants of runtime subtypes cannot stand in for static
+case choices or integer type bounds.
+
+Runtime scalar constraints currently require a named local subtype declaration.
+Anonymous constraints, library declarations, runtime real subtypes, `'Width`, and
+streaming for runtime scalar subtypes remain diagnosed as unsupported. Writable
+scalar parameters still use reference passing; proper `out`/`in out` copy-back
+and checks against the actual object's subtype are the next planned step.
 
 Local one-dimensional arrays can use runtime index constraints or take their
 bounds from an initializer:

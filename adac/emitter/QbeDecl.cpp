@@ -105,6 +105,7 @@ void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
             break;
         }
         case DeclKind::Subtype:
+            emitScalarSubtype(static_cast<SubtypeDecl*>(decl.get())->declaredType, decl->location);
             emitTypeBounds(static_cast<SubtypeDecl*>(decl.get())->declaredType, decl->location);
             break;
         case DeclKind::Object: {
@@ -185,4 +186,61 @@ void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
     if (!m_context->terminated) {
         line("call $__ada_array_rewind(l " + storageArena(true) + ", l " + temporaryMark + ")");
     }
+}
+
+void QbeEmitter::emitScalarSubtype(Type* type, const SourceLocation& location)
+{
+    if (type == nullptr || type->m_scalarLow == nullptr) {
+        return;
+    }
+    Symbol* symbol = type->m_scalarBoundsSymbol;
+    m_context->frameSize = (m_context->frameSize + 7) & ~7LL;
+    symbol->frameOffset = m_context->frameSize;
+    m_context->frameSize += 16;
+    Value low = emitExpr(type->m_scalarLow);
+    Value high = emitExpr(type->m_scalarHigh);
+    Type* representation = m_sema.typeTable().scalarBaseType(type);
+    emitRangeCheck(low, representation, location);
+    emitRangeCheck(high, representation, location);
+    char width = qbeClass(type);
+    std::string nonNull = newTemp();
+    line(nonNull + " =w csge" + width + " " + high.name + ", " + low.name);
+    std::string check = newLabel("subtypecheck");
+    std::string ready = newLabel("subtypeready");
+    branch(Value { nonNull, 'w' }, check, ready);
+    label(check);
+    emitRangeCheck(low, type->m_scalarConstraintBase, location);
+    emitRangeCheck(high, type->m_scalarConstraintBase, location);
+    jump(ready);
+    label(ready);
+    std::string lowSlot = newTemp();
+    std::string highSlot = newTemp();
+    line(lowSlot + " =l add " + m_context->frameTemp + ", " + std::to_string(symbol->frameOffset));
+    line(highSlot + " =l add " + lowSlot + ", 8");
+    line(std::string("store") + width + " " + low.name + ", " + lowSlot);
+    line(std::string("store") + width + " " + high.name + ", " + highSlot);
+}
+
+Value QbeEmitter::scalarBounds(Type* type)
+{
+    Value bounds;
+    bounds.type = qbeClass(type);
+    Symbol* symbol = type->m_scalarBoundsSymbol;
+    if (symbol == nullptr) {
+        bounds.first = std::to_string(type->low);
+        bounds.last = std::to_string(type->high);
+        return bounds;
+    }
+    Value frame = symbol->owner == m_context->symbol ? Value { m_context->frameTemp, 'l' }
+                                                     : staticLinkFor(symbol->owner->level);
+    std::string lowSlot = newTemp();
+    std::string highSlot = newTemp();
+    bounds.first = newTemp();
+    bounds.last = newTemp();
+    line(lowSlot + " =l add " + frame.name + ", " + std::to_string(symbol->frameOffset));
+    line(highSlot + " =l add " + lowSlot + ", 8");
+    std::string load = bounds.type == 'l' ? " =l loadl " : " =w loadsw ";
+    line(bounds.first + load + lowSlot);
+    line(bounds.last + load + highSlot);
+    return bounds;
 }

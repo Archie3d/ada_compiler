@@ -1,0 +1,9 @@
+runtimescalarerrors.adb:6:22: error: range bounds must have the subtype's discrete type
+runtimescalarerrors.adb:7:25: error: the bounds of an integer type must be static
+runtimescalarerrors.adb:8:27: error: the bounds of an integer type must be static
+runtimescalarerrors.adb:10:27: error: range constraints must be static
+runtimescalarerrors.adb:11:17: error: runtime scalar constraints require a local subtype declaration
+runtimescalarerrors.adb:12:31: error: 'Width for runtime scalar subtypes is not yet supported
+runtimescalarerrors.adb:15:14: error: choices have to be static
+runtimescalarerrors.adb:19:21: error: choices have to be static
+runtimescalarerrors.adb:22:12: error: stream attributes for runtime scalar subtypes are not yet supported

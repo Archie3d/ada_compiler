@@ -28,6 +28,9 @@ Value QbeEmitter::emitCall(CallExpr* expr)
         if (subprogram->canRaise) {
             emitExceptionCheck();
         }
+        if (subprogram->returnType != nullptr && subprogram->returnType->m_scalarBoundsSymbol != nullptr) {
+            emitRangeCheck(result, subprogram->returnType, expr->location);
+        }
         return result;
     }
 

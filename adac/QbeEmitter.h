@@ -118,6 +118,8 @@ private:
     // Arrays (QbeArrays.cpp).
     void emitDynamicArray(ObjectDecl* object, Symbol* symbol);
     void emitArrayFill(const Value& address, Type* type, Expr* value);
+    void emitScalarSubtype(Type* type, const SourceLocation& location);
+    Value scalarBounds(Type* type);
     void emitTypeBounds(Type* type, const SourceLocation& location);
     Value boundsFor(Symbol* symbol);
     Value withBounds(const Value& address, Type* type, Symbol* symbol);

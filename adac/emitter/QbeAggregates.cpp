@@ -24,7 +24,9 @@ Value QbeEmitter::prepareArrayAggregate(Expr* expr, const Value& context, Type* 
         raiseConstraintError();
         label(ok);
     };
-    std::string first = context.hasBounds() ? widen(context.first) : std::to_string(type->index->low);
+    Value indexBounds = scalarBounds(type->index);
+    std::string first = context.hasBounds() ? widen(context.first)
+        : (indexBounds.type == 'l' ? indexBounds.first : widen(indexBounds.first));
     std::string last;
     AggregateExpr* aggregate = nullptr;
     bool others = false;
@@ -204,7 +206,8 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
         line(result + " =l extsw " + value.name);
         return result;
     };
-    std::string first = inferred ? std::to_string(type->index->low)
+    Value indexBounds = scalarBounds(type->index);
+    std::string first = inferred ? widen(Value { indexBounds.first, indexBounds.type })
                                  : widen(Value { address.first, 'w' });
     std::string last = inferred ? first : widen(Value { address.last, 'w' });
     for (AggregateComponent& component : expr->components) {

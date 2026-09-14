@@ -247,3 +247,8 @@ add_ada_test(runtimearraytypes SOURCES runtimearraytypes.adb)
 add_ada_test(runtimearraytypechecks SOURCES runtimearraytypechecks.adb)
 add_ada_error_test(runtimearraytypeerrors SOURCES runtimearraytypeerrors.adb)
 add_ada_error_test(runtimearraylibraryerrors SOURCES runtimearraylibraryerrors.ads)
+
+add_ada_test(runtimescalars SOURCES runtimescalars.adb)
+add_ada_test(runtimescalarchecks SOURCES runtimescalarchecks.adb)
+add_ada_error_test(runtimescalarerrors SOURCES runtimescalarerrors.adb)
+add_ada_error_test(runtimescalarlibraryerrors SOURCES runtimescalarlibraryerrors.ads)

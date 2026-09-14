@@ -286,6 +286,7 @@ Type* TypeTable::makeSubtype(const std::string& name, Type* parent, long long lo
     subtype->isSubtype = true;
     subtype->low = low;
     subtype->high = high;
+    subtype->m_scalarBoundsSymbol = parent->m_scalarBoundsSymbol;
     subtype->byteSize = parent->kind == TypeKind::Integer ? typeSize(parent) : parent->byteSize;
     subtype->needsZeroInit = parent->needsZeroInit;
     subtype->literals = parent->literals;
@@ -369,6 +370,7 @@ Type* TypeTable::scalarBaseType(Type* type)
         return type->m_scalarBase;
     }
     Type* result = makeSubtype(type->name + "'Base", type, type->low, type->high);
+    result->m_scalarBoundsSymbol = nullptr;
     if (type->kind == TypeKind::Integer) {
         bool wide = typeSize(type) == 8;
         result->low = wide ? std::numeric_limits<long long>::min() : -2147483648LL;
