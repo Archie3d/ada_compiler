@@ -242,3 +242,8 @@ add_ada_error_test(duplicatedeclarationerrors SOURCES duplicatedeclarationerrors
 include(${CMAKE_CURRENT_SOURCE_DIR}/BasePowerTests.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/ImportedFloatAbiTests.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/NumericsPrecisionTests.cmake)
+
+add_ada_test(runtimearraytypes SOURCES runtimearraytypes.adb)
+add_ada_test(runtimearraytypechecks SOURCES runtimearraytypechecks.adb)
+add_ada_error_test(runtimearraytypeerrors SOURCES runtimearraytypeerrors.adb)
+add_ada_error_test(runtimearraylibraryerrors SOURCES runtimearraylibraryerrors.ads)

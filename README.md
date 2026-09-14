@@ -249,8 +249,29 @@ otherwise `Constraint_Error` is raised. `others` still requires an applicable
 target constraint. These checks follow the
 [Ada aggregate rules](https://www.adaic.org/resources/add_content/standards/22rm/html/RM-4-3-3.html).
 
-Runtime subtype declarations and stream attributes for unconstrained
-multidimensional arrays remain unsupported.
+Local named array subtypes and constrained array types can also use runtime
+bounds, in one or multiple dimensions:
+
+```ada
+subtype Buffer is String (2 .. N);
+type Grid is array (1 .. Rows, 4 .. Columns + 3) of Integer;
+A : Buffer := (others => ' ');
+B : Grid := (others => (others => 0));
+```
+
+Bounds are evaluated and checked once when the declaration is elaborated. Later
+changes to `N`, `Rows`, or `Columns` do not change those bounds. Each call or block
+re-entry gets its own bounds, also available to nested routines and local packages.
+Aliases retain the original bounds. Type/subtype `'First`, `'Last`, `'Length`, and
+`'Range` work without an object; object declarations reuse the saved constraints.
+Parameters and results check dimension lengths and slide to the declared bounds.
+Declaring a type allocates no array data; each dimension is limited to
+`Integer'Last` elements, with larger lengths raising `Storage_Error`.
+
+Runtime scalar subtypes, library-level runtime array declarations, components and
+allocators using runtime-constrained array subtypes, and `'Size` and streaming for
+those subtypes remain unsupported and diagnosed. Stream attributes for
+unconstrained multidimensional arrays also remain unsupported.
 
 Local one-dimensional arrays can use runtime index constraints or take their
 bounds from an initializer:
@@ -281,8 +302,8 @@ remain alive in its own handlers; enclosing objects remain alive when an inner
 block fails. Function returns release remaining local and temporary allocations.
 This implementation uses signed 32-bit bounds,
 limits lengths to `Integer'Last`, checks allocation sizes, and raises
-`Storage_Error` on allocation failure. Runtime named subtype constraints,
-and library-level dynamic objects remain unsupported.
+`Storage_Error` on allocation failure. Library-level dynamic objects remain
+unsupported.
 
 Floating point types are declared with `digits`, optionally with a range:
 

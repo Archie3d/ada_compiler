@@ -125,7 +125,7 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
     const std::string& name = expr->lower;
     if (base != nullptr && base->kind == TypeKind::Array
         && (name == "first" || name == "last" || name == "length")) {
-        if (prefixIsType && !base->constrained) {
+        if (prefixIsType && !base->constrained && base->m_boundsSymbol == nullptr) {
             m_diagnostics.error(expr->location, "array bound attributes require an object or a constrained array subtype");
             return nullptr;
         }
@@ -146,6 +146,10 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
     }
 
     if (name == "read" || name == "write" || name == "input" || name == "output") {
+        if (base != nullptr && base->m_boundsSymbol != nullptr) {
+            m_diagnostics.error(expr->location, "stream attributes for runtime-constrained array subtypes are not yet supported");
+            return nullptr;
+        }
         if (base != nullptr && base->kind == TypeKind::Array && base->arrayRank > 1 && !base->constrained) {
             m_diagnostics.error(expr->location, "stream attributes for unconstrained multidimensional arrays are not yet supported");
             return nullptr;
@@ -296,6 +300,10 @@ Type* Sema::analyzeAttribute(AttributeExpr* expr, Scope* scope)
     if (name == "size") {
         if (prefixType == nullptr) {
             m_diagnostics.error(expr->location, "'Size requires a type or an object");
+            return nullptr;
+        }
+        if (prefixType->m_boundsSymbol != nullptr) {
+            m_diagnostics.error(expr->location, "'Size for runtime-constrained array subtypes is not yet supported");
             return nullptr;
         }
         expr->type = m_types.integerType();

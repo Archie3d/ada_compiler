@@ -1,0 +1,4 @@
+runtimearraylibraryerrors.ads:3:21: error: index constraints must be static
+runtimearraylibraryerrors.ads:4:27: error: runtime array type bounds are supported only inside a subprogram
+runtimearraylibraryerrors.ads:5:9: error: index constraints must be static
+runtimearraylibraryerrors.ads:5:5: error: an unconstrained array object is currently supported only inside a subprogram

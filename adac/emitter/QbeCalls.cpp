@@ -50,6 +50,13 @@ Value QbeEmitter::emitCall(CallExpr* expr)
         if (parameter->byReference) {
             // Composite values are already addresses and carry their bounds.
             Value value = isComposite(argument->type) ? emitExpr(argument) : emitAddress(argument);
+            if (parameter->type->m_boundsSymbol != nullptr) {
+                Value target = withBounds(Value {}, parameter->type, nullptr);
+                checkArrayShape(target, parameter->type, value, argument->type);
+                value.first = target.first;
+                value.last = target.last;
+                value.innerBounds = target.innerBounds;
+            }
             arguments.push_back("l " + value.name);
             if (isUnconstrainedArray(parameter->type)) {
                 if (!value.hasBounds()) {

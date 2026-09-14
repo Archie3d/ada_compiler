@@ -120,8 +120,11 @@ void Sema::analyzeTypeDecl(TypeDecl* decl, Scope* scope)
         int rank = static_cast<int>(definition->indexTypes.size());
         Type* cell = resolveSubtypeIndication(definition->elementType.get(), scope);
         if (cell != nullptr && cell->kind == TypeKind::Array && !cell->constrained) {
-            m_diagnostics.error(definition->elementType->location, "array components require a constrained array subtype");
+            m_diagnostics.error(definition->elementType->location, cell->m_boundsSymbol != nullptr
+                                    ? "runtime-constrained array components are not yet supported"
+                                    : "array components require a constrained array subtype");
         }
+        bool dynamicBounds = false;
         Type* row = type;
         for (int dimension = 0; dimension < rank; ++dimension) {
             row->arrayRank = rank - dimension;
@@ -134,16 +137,23 @@ void Sema::analyzeTypeDecl(TypeDecl* decl, Scope* scope)
                 m_diagnostics.error(index->location, "array indices require a discrete type");
             }
             if (index->rangeLow && index->rangeHigh) {
-                analyzeExpr(index->rangeLow.get(), scope, indexType);
-                analyzeExpr(index->rangeHigh.get(), scope, indexType);
+                Type* lowType = analyzeExpr(index->rangeLow.get(), scope, indexType);
+                Type* highType = analyzeExpr(index->rangeHigh.get(), scope, indexType);
+                if (!typesCompatible(indexType, lowType) || !typesCompatible(indexType, highType)) {
+                    m_diagnostics.error(index->location, "array index bounds have an incompatible type");
+                }
                 if (!foldStatic(index->rangeLow.get(), row->indexLow)
                     || !foldStatic(index->rangeHigh.get(), row->indexHigh)) {
-                    m_diagnostics.error(index->location, "array index bounds must be static");
+                    if (m_currentSubprogram == nullptr) {
+                        m_diagnostics.error(index->location, "runtime array type bounds are supported only inside a subprogram");
+                    }
+                    dynamicBounds = true;
                 }
             } else if (indexType != nullptr && row->constrained) {
                 row->indexLow = indexType->low;
                 row->indexHigh = indexType->high;
             }
+            type->m_boundExpressions.push_back({ index->rangeLow.get(), index->rangeHigh.get() });
             if (dimension + 1 == rank) {
                 row->element = cell;
             } else {
@@ -151,6 +161,13 @@ void Sema::analyzeTypeDecl(TypeDecl* decl, Scope* scope)
                 row = row->element;
                 row->isArrayRow = true;
             }
+        }
+        if (dynamicBounds) {
+            for (Type* axis = type; axis != cell; axis = axis->element) {
+                axis->constrained = false;
+            }
+        } else {
+            type->m_boundExpressions.clear();
         }
         if (rank > 1 && type->constrained) {
             long long size = typeSize(cell);
@@ -228,20 +245,32 @@ void Sema::analyzeTypeDecl(TypeDecl* decl, Scope* scope)
         return;
     }
     decl->declaredType = type;
+    Symbol* symbol = nullptr;
     if (completing != nullptr) {
-        // The name is already in the scope, standing for this very type.
-        return;
+        // Reuse the name of the incomplete declaration, including its runtime
+        // bounds storage when the full declaration supplies a dynamic array.
+        for (Symbol* candidate : scope->lookupLocal(decl->lower)) {
+            if (candidate->kind == SymbolKind::TypeName && candidate->type == type) {
+                symbol = candidate;
+                break;
+            }
+        }
+    } else {
+        symbol = m_symbolTable.createSymbol(SymbolKind::TypeName, decl->lower, decl->name);
+        symbol->type = type;
+        symbol->location = decl->location;
+        scope->add(symbol);
     }
-
-    Symbol* symbol = m_symbolTable.createSymbol(SymbolKind::TypeName, decl->lower, decl->name);
-    symbol->type = type;
-    symbol->location = decl->location;
-    scope->add(symbol);
+    if (!type->m_boundExpressions.empty() && m_currentSubprogram != nullptr) {
+        type->m_boundsSymbol = symbol;
+        symbol->owner = m_currentSubprogram;
+        m_currentSubprogram->needsFrame = true;
+    }
 }
 
 void Sema::analyzeSubtypeDecl(SubtypeDecl* decl, Scope* scope)
 {
-    Type* base = resolveSubtypeIndication(decl->subtype.get(), scope);
+    Type* base = resolveSubtypeIndication(decl->subtype.get(), scope, m_currentSubprogram != nullptr);
     if (base == nullptr) {
         return;
     }
@@ -250,6 +279,16 @@ void Sema::analyzeSubtypeDecl(SubtypeDecl* decl, Scope* scope)
     Symbol* symbol = m_symbolTable.createSymbol(SymbolKind::TypeName, decl->lower, decl->name);
     symbol->type = type;
     symbol->location = decl->location;
+    if (type->kind == TypeKind::Array && !type->constrained
+        && !decl->subtype->indexLows.empty() && m_currentSubprogram != nullptr) {
+        type->m_boundsSymbol = symbol;
+        symbol->owner = m_currentSubprogram;
+        m_currentSubprogram->needsFrame = true;
+        for (std::size_t i = 0; i < decl->subtype->indexLows.size(); ++i) {
+            type->m_boundExpressions.push_back({ decl->subtype->indexLows[i].get(),
+                                                decl->subtype->indexHighs[i].get() });
+        }
+    }
     scope->add(symbol);
 }
 
@@ -275,7 +314,9 @@ void Sema::layoutRecord(TypeDecl* decl, TypeDefinition* definition, Type* type, 
         info.displayName = field.name;
         info.type = resolveSubtypeIndication(field.subtype.get(), scope);
         if (info.type != nullptr && info.type->kind == TypeKind::Array && !info.type->constrained) {
-            m_diagnostics.error(field.subtype->location, "record components require a constrained array subtype");
+            m_diagnostics.error(field.subtype->location, info.type->m_boundsSymbol != nullptr
+                                    ? "runtime-constrained record components are not yet supported"
+                                    : "record components require a constrained array subtype");
         }
         info.index = fieldIndex++;
         info.variant = variantIndex;
@@ -492,6 +533,10 @@ Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope
             m_diagnostics.error(indication->location, "index constraint count must match the array rank");
             return base;
         }
+        if (base->m_boundsSymbol != nullptr) {
+            m_diagnostics.error(indication->location, "an index constraint requires an unconstrained array subtype");
+            return base;
+        }
         if (array->arrayRank > 1) {
             if (base->constrained) {
                 m_diagnostics.error(indication->location, "an index constraint requires an unconstrained array subtype");
@@ -544,12 +589,18 @@ Type* Sema::resolveSubtypeIndication(SubtypeIndication* indication, Scope* scope
             indication->resolved = subtype;
             return subtype;
         }
-        analyzeExpr(indication->indexLows.front().get(), scope, array->index);
+        Type* lowType = analyzeExpr(indication->indexLows.front().get(), scope, array->index);
+        if (!typesCompatible(array->index, lowType)) {
+            m_diagnostics.error(indication->location, "array index bounds have an incompatible type");
+        }
         long long low = 0;
         long long high = 0;
         bool ok = foldStatic(indication->indexLows.front().get(), low);
         if (indication->indexHighs.front()) {
-            analyzeExpr(indication->indexHighs.front().get(), scope, array->index);
+            Type* highType = analyzeExpr(indication->indexHighs.front().get(), scope, array->index);
+            if (!typesCompatible(array->index, highType)) {
+                m_diagnostics.error(indication->location, "array index bounds have an incompatible type");
+            }
             ok = ok && foldStatic(indication->indexHighs.front().get(), high);
         }
         if (!ok && allowDynamic && indication->indexHighs.front() != nullptr) {

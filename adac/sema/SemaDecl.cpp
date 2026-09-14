@@ -70,7 +70,7 @@ void Sema::analyzeObjectDecl(ObjectDecl* decl, Scope* scope)
     if (type != nullptr && type->kind == TypeKind::Array && !type->constrained) {
         if (m_currentSubprogram == nullptr) {
             m_diagnostics.error(decl->location, "an unconstrained array object is currently supported only inside a subprogram");
-        } else if (decl->subtype->indexLows.empty() && !decl->initializer) {
+        } else if (decl->subtype->indexLows.empty() && !decl->initializer && type->m_boundsSymbol == nullptr) {
             m_diagnostics.error(decl->location, "an unconstrained array object needs an initializer or index constraint");
         }
     }

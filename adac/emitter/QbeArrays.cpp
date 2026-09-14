@@ -6,12 +6,55 @@
 using QbeSupport::constantValue;
 using QbeSupport::isLiteralOperand;
 
+void QbeEmitter::emitTypeBounds(Type* type, const SourceLocation& location)
+{
+    if (type == nullptr || type->m_boundExpressions.empty()) {
+        return;
+    }
+    Symbol* symbol = type->m_boundsSymbol;
+    m_context->frameSize = (m_context->frameSize + 7) & ~7LL;
+    symbol->frameOffset = m_context->frameSize;
+    m_context->frameSize += 8 + 8 * type->arrayRank;
+    Type* axis = type;
+    for (int dimension = 0; dimension < type->arrayRank; ++dimension) {
+        auto [low, high] = type->m_boundExpressions[dimension];
+        Value first = low ? emitExpr(low) : constantValue(axis->indexLow, 'w');
+        Value last = high ? emitExpr(high) : constantValue(axis->indexHigh, 'w');
+        emitRangeCheck(first, m_sema.typeTable().integerType(), location);
+        emitRangeCheck(last, m_sema.typeTable().integerType(), location);
+        std::string nonNull = newTemp();
+        line(nonNull + " =w csgew " + last.name + ", " + first.name);
+        std::string check = newLabel("typeboundscheck");
+        std::string ready = newLabel("typeboundsready");
+        branch(Value { nonNull, 'w' }, check, ready);
+        label(check);
+        emitRangeCheck(first, axis->index, location);
+        emitRangeCheck(last, axis->index, location);
+        jump(ready);
+        label(ready);
+        // Bound descriptors and array loops use signed 32-bit lengths. Validate
+        // each dimension without allocating storage for the declared type.
+        line(newTemp() + " =l call $__ada_array_size(w " + first.name + ", w " + last.name + ", l 1)");
+        emitExceptionCheck();
+        std::string firstSlot = newTemp();
+        std::string lastSlot = newTemp();
+        line(firstSlot + " =l add " + m_context->frameTemp + ", "
+             + std::to_string(symbol->frameOffset + 8 + dimension * 8));
+        line(lastSlot + " =l add " + firstSlot + ", 4");
+        line("storew " + first.name + ", " + firstSlot);
+        line("storew " + last.name + ", " + lastSlot);
+        axis = axis->element;
+    }
+}
+
 void QbeEmitter::emitDynamicArray(ObjectDecl* object, Symbol* symbol)
 {
     Type* type = symbol->type;
     Value bounds;
-    bool explicitBounds = !object->subtype->indexLows.empty();
-    if (explicitBounds) {
+    bool explicitBounds = !object->subtype->indexLows.empty() || type->m_boundsSymbol != nullptr;
+    if (type->m_boundsSymbol != nullptr) {
+        bounds = boundsFor(type->m_boundsSymbol);
+    } else if (explicitBounds) {
         Type* axis = type;
         for (int dimension = 0; dimension < type->arrayRank; ++dimension) {
             Value first = emitExpr(object->subtype->indexLows[dimension].get());
@@ -189,8 +232,9 @@ Value QbeEmitter::withBounds(const Value& address, Type* type, Symbol* symbol)
             row = row->element;
             result.innerBounds.push_back({ std::to_string(row->indexLow), std::to_string(row->indexHigh) });
         }
-    } else if (symbol != nullptr) {
-        Value bounds = boundsFor(symbol);
+    } else if (symbol != nullptr || (!result.hasBounds() && type->m_boundsSymbol != nullptr)) {
+        Value bounds = boundsFor(symbol != nullptr && symbol->kind != SymbolKind::TypeName
+                                    ? symbol : type->m_boundsSymbol);
         result.first = bounds.first;
         result.last = bounds.last;
         result.innerBounds = bounds.innerBounds;

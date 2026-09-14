@@ -66,6 +66,9 @@ Value QbeEmitter::emitExpr(Expr* expr)
             }
             return constantValue(symbol->staticValue, qbeClass(symbol->type));
         }
+        if (symbol->kind == SymbolKind::TypeName && symbol->type->m_boundsSymbol != nullptr) {
+            return boundsFor(symbol->type->m_boundsSymbol);
+        }
         Value address = addressOf(symbol);
         if (isComposite(symbol->type)) {
             return withBounds(address, symbol->type, symbol);
@@ -86,6 +89,9 @@ Value QbeEmitter::emitExpr(Expr* expr)
         }
         if (symbol != nullptr && symbol->kind == SymbolKind::EnumerationLiteral) {
             return constantValue(symbol->enumerationValue, qbeClass(symbol->type));
+        }
+        if (symbol != nullptr && symbol->kind == SymbolKind::TypeName && symbol->type->m_boundsSymbol != nullptr) {
+            return boundsFor(symbol->type->m_boundsSymbol);
         }
         Value address = emitAddress(expr);
         if (isComposite(expr->type)) {

@@ -193,8 +193,18 @@ sizes, signed small representations, invalid size clauses, and unsupported impor
   exception propagation, while preserving enclosing objects and a block's
   locals during its own handler. Local arrays and temporaries use separate
   checkpointed allocation lists (`arraylifetimes.adb`).
-- [ ] Runtime scalar/named subtype bounds and library-level dynamic arrays.
-  Unsupported cases have diagnostics in `dynamicarrayerrors.adb`.
+- [ ] Local runtime discrete scalar subtype bounds (suggested next step).
+  Start with integer and enumeration subtypes, such as
+  `subtype Index is Integer range 1 .. N`. Save bounds once per elaboration,
+  preserve them through aliases and nested calls, and use them for scalar
+  constraint checks, `'First`/`'Last`/`'Range`, membership, loops, and array index
+  subtypes (`type Vector is array (Index) of Integer`). Cover changing source
+  variables, side effects, recursion, block re-entry, null ranges, and failures
+  during elaboration or value checks. Runtime real subtypes and scalar
+  `out`/`in out` copy-back semantics remain separate follow-ups.
+- [ ] Library-level dynamic arrays/types. Unsupported cases have diagnostics in
+  `runtimearraylibraryerrors.ads`; local named array constraints are implemented
+  below.
 - [x] Positional/named aggregates with runtime target bounds, including a final
   `others`, static choice lists/ranges, and a single dynamic choice/range.
   Check lengths and choices; slide named aggregates without `others`; evaluate
@@ -237,7 +247,15 @@ passing through nested calls, length mismatch, and concatenating integer arrays.
   named, and string-literal rows. Covered by `inferredmatrices.adb` and
   `inferredmatrixchecks.adb`; reject unbounded `others` and non-subaggregate rows
   in `inferredmatrixerrors.adb` and `matrixaggregateerrors.adb`.
-- [ ] Runtime subtype declarations and runtime bounds in type declarations.
+- [x] Local runtime array subtype declarations and runtime bounds in array type
+  declarations, for one or multiple dimensions. Save checked bounds once per
+  elaboration in the owning activation; preserve them through aliases, nested
+  routines/packages, recursion, block re-entry, attributes, aggregates, objects,
+  and sliding/checks for parameters and returns. Covered by `runtimearraytypes.adb`
+  and `runtimearraytypechecks.adb`, with legality/unsupported-context diagnostics
+  in `runtimearraytypeerrors.adb` and `runtimearraylibraryerrors.ads`.
+- [ ] Runtime-constrained array components, allocators, `'Size`, and streaming.
+  These uses remain diagnosed rather than using an incorrect static layout.
 - [ ] Stream attributes for unconstrained multidimensional arrays.
 - [ ] Wider descriptor indices and lengths; runtime lengths currently cannot
   exceed `Integer'Last`.
@@ -352,6 +370,11 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next sequence: runtime array subtype declarations and type bounds.
+Suggested next step: local runtime discrete scalar subtype bounds, including their
+use as array index subtypes. This extends the saved-bound elaboration machinery
+from the completed local runtime array subtype/type-bound checkpoint and removes
+the need to repeat explicit ranges on each array declaration. Keep this step
+local and discrete; library-level dynamic arrays, runtime-constrained components,
+and wider descriptor indices/lengths remain separate follow-ups.
 Modular types can be developed as a separate bounded extension after the numeric
 follow-up checks.

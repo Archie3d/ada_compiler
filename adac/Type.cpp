@@ -300,6 +300,7 @@ Type* TypeTable::makeSubtype(const std::string& name, Type* parent, long long lo
     subtype->indexLow = parent->indexLow;
     subtype->indexHigh = parent->indexHigh;
     subtype->constrained = parent->constrained;
+    subtype->m_boundsSymbol = parent->m_boundsSymbol;
     subtype->fields = parent->fields;
     subtype->target = parent->target;
     subtype->privateTo = parent->privateTo;

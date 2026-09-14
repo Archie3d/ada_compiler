@@ -376,7 +376,7 @@ Value QbeEmitter::emitDynamicAggregateInto(AggregateExpr* expr, const Value& add
     label(done);
     std::string size = newTemp();
     line(size + " =l mul " + wideLength + ", " + elementSize);
-    if (!inferred) {
+    if (!address.name.empty()) {
         line("call $memmove(l " + address.name + ", l " + buffer + ", l " + size + ")");
     }
     Value result { buffer, 'l', resultFirst, resultLast };
@@ -492,7 +492,7 @@ void QbeEmitter::emitAggregateInto(AggregateExpr* expr, const Value& address, Ty
 Value QbeEmitter::emitAggregate(AggregateExpr* expr)
 {
     if (isUnconstrainedArray(expr->type)) {
-        return emitDynamicAggregateInto(expr, Value {}, expr->type);
+        return emitDynamicAggregateInto(expr, withBounds(Value {}, expr->type, nullptr), expr->type);
     }
     long long size = typeSize(expr->type);
     std::string buffer = allocScratch(size > 0 ? size : 1);

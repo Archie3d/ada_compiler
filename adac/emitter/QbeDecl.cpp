@@ -97,6 +97,16 @@ void QbeEmitter::emitLocalDeclarations(DeclList& declarations)
     line(temporaryMark + " =l loadl " + storageArena(true));
     for (const DeclPtr& decl : declarations) {
         switch (decl->kind) {
+        case DeclKind::Type: {
+            auto* typeDecl = static_cast<TypeDecl*>(decl.get());
+            if (typeDecl->definition != nullptr && typeDecl->definition->kind == TypeDefKind::Array) {
+                emitTypeBounds(typeDecl->declaredType, decl->location);
+            }
+            break;
+        }
+        case DeclKind::Subtype:
+            emitTypeBounds(static_cast<SubtypeDecl*>(decl.get())->declaredType, decl->location);
+            break;
         case DeclKind::Object: {
             auto* object = static_cast<ObjectDecl*>(decl.get());
             if (object->awaitsValue) {

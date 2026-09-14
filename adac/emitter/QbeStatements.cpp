@@ -150,7 +150,14 @@ void QbeEmitter::emitStatement(Stmt* statement)
             if (isUnconstrainedArray(resultType)) {
                 Value value = emitExpr(returnStatement->value.get());
                 value = withBounds(value, returnStatement->value->type, nullptr);
-                std::string elementSize = arrayElementSize(value, returnStatement->value->type);
+                if (resultType->m_boundsSymbol != nullptr) {
+                    Value target = withBounds(Value {}, resultType, nullptr);
+                    checkArrayShape(target, resultType, value, returnStatement->value->type);
+                    value.first = target.first;
+                    value.last = target.last;
+                    value.innerBounds = target.innerBounds;
+                }
+                std::string elementSize = arrayElementSize(value, resultType);
                 line("call $__ada_array_result(l %.result, l " + value.name + ", w " + value.first
                      + ", w " + value.last + ", l " + elementSize + ")");
                 emitExceptionCheck();

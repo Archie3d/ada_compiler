@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 enum class TypeKind
@@ -121,6 +122,11 @@ public:
     long long indexLow = 0;
     long long indexHigh = 0;
     bool constrained = true;
+
+    // A dynamically constrained declaration keeps its bounds in its owner's
+    // activation. `constrained` continues to mean a static storage layout.
+    Symbol* m_boundsSymbol = nullptr;
+    std::vector<std::pair<struct Expr*, struct Expr*>> m_boundExpressions;
 
     // Record types.
     std::vector<FieldInfo> fields;
