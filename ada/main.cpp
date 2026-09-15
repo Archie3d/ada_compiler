@@ -17,8 +17,8 @@ enum class Stage
 
 void printUsage()
 {
-    std::cerr << "usage: ada [options] <source> [<source>...]\n"
-              << "  Compiles Ada 83 sources into an executable by running adac, qbe and cc.\n"
+    std::cerr << "AIDA Ada compiler\n"
+              << "usage: ada [options] <source> [<source>...]\n"
               << "\n"
               << "  -o <file>     name of the produced file\n"
               << "  --emit-ir     stop after generating QBE intermediate language\n"

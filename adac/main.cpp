@@ -30,9 +30,8 @@ namespace
 
 void printUsage()
 {
-    std::cerr << "usage: adac [options] <source> [<source>...]\n"
-              << "  Translates Ada 83 source files into QBE intermediate language.\n"
-              << "  Units named in a with clause are read from the library path.\n"
+    std::cerr << "AIDA Ada compiler to QBE IR\n"
+              << "usage: adac [options] <source> [<source>...]\n"
               << "\n"
               << "  -o <file>       name of the produced file, '-' for standard output\n"
               << "  -I <dir>        another directory to look for units in\n"
