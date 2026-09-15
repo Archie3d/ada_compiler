@@ -1,0 +1,4 @@
+unlisted exception propagates
+others follows a choice list
+re-raise from a choice list keeps Beta
+handlerchoices: passed

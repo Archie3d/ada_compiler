@@ -252,3 +252,6 @@ add_ada_test(runtimescalars SOURCES runtimescalars.adb)
 add_ada_test(runtimescalarchecks SOURCES runtimescalarchecks.adb)
 add_ada_error_test(runtimescalarerrors SOURCES runtimescalarerrors.adb)
 add_ada_error_test(runtimescalarlibraryerrors SOURCES runtimescalarlibraryerrors.ads)
+
+add_ada_test(handlerchoices SOURCES handlerchoices.adb)
+add_ada_test(reverseloops SOURCES reverseloops.adb)
