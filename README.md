@@ -1,4 +1,5 @@
 # Ada compiler
+![build](https://github.com/Archie3d/aida/actions/workflows/build-and-test.yml/badge.svg)
 
 This project implements an Ada 83/95 subset compiler in C++. It uses [QBE](https://c9x.me/compile/) as a backend.
 
