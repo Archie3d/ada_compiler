@@ -470,6 +470,13 @@ type or a subprogram that mentioned it goes on meaning the same thing.
 
 ### Discriminants and variant records
 
+Grouped record fields retain their full constraints and defaults. For example,
+`X, Y : Integer range 1 .. 10 := Next_Value;` gives both fields the range and
+evaluates `Next_Value` separately for each field whenever an object is created.
+This also applies to array and record constraints and fields in variant parts.
+Only the active variant's defaults are evaluated; exceptions stop initialization
+and propagate to the enclosing handler.
+
 A discriminant is a component named in the type declaration and fixed when an
 object is declared. A variant part makes the rest of the components depend on
 it:

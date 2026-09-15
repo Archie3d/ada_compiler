@@ -235,28 +235,22 @@ void Parser::parseRecordComponents(std::vector<RecordField>& fields)
         std::vector<std::string> lowered;
         std::vector<std::string> names = parseIdentifierList(lowered);
         expect(TokenKind::Colon, "in record component");
-        SubtypeIndicationPtr subtype = parseSubtypeIndication();
-        ExprPtr defaultValue;
-        if (match(TokenKind::Assign)) {
-            defaultValue = parseExpression();
-        }
-        expect(TokenKind::Semicolon, "after record component");
+        // As with grouped parameters, retain a complete owned syntax tree for
+        // every name. Semantic analysis may annotate each subtree separately.
+        std::size_t subtypeStart = m_position;
         for (std::size_t i = 0; i < names.size(); ++i) {
             RecordField field;
             field.name = names[i];
             field.lower = lowered[i];
             field.location = fieldLocation;
-            auto copy = std::make_unique<SubtypeIndication>();
-            copy->location = subtype->location;
-            copy->name = subtype->name;
-            copy->lower = subtype->lower;
-            field.subtype = std::move(copy);
-            if (i + 1 == names.size()) {
-                field.subtype = std::move(subtype);
-                field.defaultValue = std::move(defaultValue);
+            m_position = subtypeStart;
+            field.subtype = parseSubtypeIndication();
+            if (match(TokenKind::Assign)) {
+                field.defaultValue = parseExpression();
             }
             fields.push_back(std::move(field));
         }
+        expect(TokenKind::Semicolon, "after record component");
     }
 }
 

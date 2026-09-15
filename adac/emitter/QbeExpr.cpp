@@ -434,7 +434,15 @@ void QbeEmitter::emitDefaultInit(const Value& address, Type* type)
         return;
     }
 
+    long long discriminant = 0;
+    bool fixedVariant = base->variantOn >= 0 && discriminantValueOf(type, base->variantOn, discriminant);
+    int activeVariant = fixedVariant ? variantFor(base, discriminant) : -1;
     for (const FieldInfo& field : base->fields) {
+        // Inactive alternatives share storage with the active one. Their
+        // defaults must neither write that storage nor evaluate side effects.
+        if (fixedVariant && field.variant >= 0 && field.variant != activeVariant) {
+            continue;
+        }
         Value slot = address;
         if (field.offset != 0) {
             std::string moved = newTemp();

@@ -96,9 +96,13 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`,
   subtype objects and compatible index types (or two integer index types).
 - [ ] **Audit** aggregate completeness, duplicate choices, record defaults, array
   sliding, overlapping slice assignments, and component subtype checks.
-- [ ] Preserve constraints and defaults for every name in a grouped component
-  declaration. The parser currently moves the full subtype/default expression
-  only to the last field in declarations such as `X, Y : Integer := 3`.
+- [x] Preserve constraints and defaults for every name in a grouped component
+  declaration, including variant alternatives. Each field owns its complete
+  subtype/default syntax, and each object evaluates defaults separately for
+  its active fields. Inactive variant defaults are skipped. Covered by
+  `groupedfields.adb`, `groupedfieldchecks.adb`, and `groupedfielderrors.adb`:
+  scalar ranges, constrained strings/matrices, nested discriminant constraints,
+  default side effects, exception propagation, and invalid defaults.
 
 Tests: a function returning a local record; two live string results from different
 calls; integer arrays differing beyond their first bytes; equal variants with
@@ -391,9 +395,10 @@ These are later projects with substantial runtime requirements.
   tests; the current runtime helpers provide a correctness baseline.
 
 Scalar `out`/`in out` copy-in/copy-out and runtime discrete subtype bounds are
-now implemented, along with array type identity checks. Suggested next step:
-preserve constraints and defaults for every name in grouped record component
-declarations (listed under Composite values and returns). Library-level dynamic
+now implemented, along with array type identity checks and grouped record
+component constraints/defaults. Suggested next step: audit overlapping slice
+assignments and array sliding with focused reproductions (listed under Composite
+values and returns). Library-level dynamic
 arrays, runtime-constrained components, and wider descriptor indices/lengths
 remain later array follow-ups.
 Modular types can be developed as a separate bounded extension after the numeric
