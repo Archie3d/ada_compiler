@@ -34,6 +34,14 @@ Value QbeEmitter::emitCall(CallExpr* expr)
         return result;
     }
 
+    struct ScalarCopyBack
+    {
+        Value actual;
+        Value temporary;
+        Type* formalType;
+        Expr* argument;
+    };
+    std::vector<ScalarCopyBack> copyBacks;
     std::vector<std::string> arguments;
     bool compositeResult = isComposite(subprogram->returnType);
     bool dynamicResult = isUnconstrainedArray(subprogram->returnType);
@@ -51,6 +59,24 @@ Value QbeEmitter::emitCall(CallExpr* expr)
         Symbol* parameter = subprogram->parameters[i];
         Expr* argument = expr->resolvedArguments[i];
         if (parameter->byReference) {
+            if (isScalar(parameter->type)) {
+                // Keep the pointer ABI, but give each formal a distinct object.
+                // Evaluate the actual's address once, including indexed names.
+                Value actual = emitAddress(argument);
+                Value temporary { allocScratch(std::max(1LL, typeSize(parameter->type))), 'l' };
+                if (parameter->mode == ParameterMode::InOut || parameter->type->kind == TypeKind::Access) {
+                    Value value = loadFrom(actual, argument->type);
+                    if (parameter->mode == ParameterMode::InOut) {
+                        emitRangeCheck(value, parameter->type, argument->location);
+                    }
+                    storeInto(temporary, value, parameter->type);
+                }
+                // Numeric/enumeration out formals start uninitialized. Access
+                // out formals retain the actual value without a constraint check.
+                arguments.push_back("l " + temporary.name);
+                copyBacks.push_back({ actual, temporary, parameter->type, argument });
+                continue;
+            }
             // Composite values are already addresses and carry their bounds.
             Value value = isComposite(argument->type) ? emitExpr(argument) : emitAddress(argument);
             if (parameter->type->m_boundsSymbol != nullptr) {
@@ -128,6 +154,14 @@ Value QbeEmitter::emitCall(CallExpr* expr)
         }
     } else if (compositeResult) {
         result = withBounds(Value { resultStorage, 'l' }, subprogram->returnType, nullptr);
+    }
+    // The exception check above bypasses every copy-back on propagation.
+    // Adopt dynamic results first so a failed copy-back cannot leak them.
+    // Formal declaration order is our choice of Ada's arbitrary copy-back order.
+    for (const ScalarCopyBack& copy : copyBacks) {
+        Value value = loadFrom(copy.temporary, copy.formalType);
+        emitRangeCheck(value, copy.argument->type, copy.argument->location);
+        storeInto(copy.actual, value, copy.argument->type);
     }
     return result;
 }

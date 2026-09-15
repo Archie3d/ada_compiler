@@ -1,0 +1,5 @@
+scalarcopyerrors.adb:13:16: error: 'V' cannot be assigned to
+scalarcopyerrors.adb:14:17: error: 'V' cannot be assigned to
+scalarcopyerrors.adb:17:12: error: 'C' cannot be assigned to
+scalarcopyerrors.adb:18:13: error: 'C' cannot be assigned to
+scalarcopyerrors.adb:19:12: error: the target of an assignment must be a variable

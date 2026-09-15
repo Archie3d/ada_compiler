@@ -303,9 +303,19 @@ case choices or integer type bounds.
 
 Runtime scalar constraints currently require a named local subtype declaration.
 Anonymous constraints, library declarations, runtime real subtypes, `'Width`, and
-streaming for runtime scalar subtypes remain diagnosed as unsupported. Writable
-scalar parameters still use reference passing; proper `out`/`in out` copy-back
-and checks against the actual object's subtype are the next planned step.
+streaming for runtime scalar subtypes remain diagnosed as unsupported.
+
+Ada scalar `out` and `in out` parameters have separate value storage. An `in out`
+parameter copies and checks the actual value against the formal subtype before
+the call; numeric and enumeration `out` parameters start uninitialized. Access
+`out` parameters retain the initial access value without a constraint check.
+On normal return, each value is checked against the actual object's subtype,
+including saved runtime bounds, before assignment. Propagated exceptions skip
+copy-back; a handled exception followed by normal return permits it. Actual
+addresses are evaluated once. Copy-back uses formal declaration order, so earlier
+copies can remain if a later check fails. Imported C conventions and composite
+parameter mechanisms are unchanged. See the
+[Ada parameter rules](https://www.adaic.org/resources/add_content/standards/05rm/html/RM-6-4-1.html).
 
 Local one-dimensional arrays can use runtime index constraints or take their
 bounds from an initializer:

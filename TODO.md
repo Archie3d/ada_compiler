@@ -104,15 +104,15 @@ Primary code: `adac/emitter/QbeCalls.cpp`, `adac/emitter/QbeFunctions.cpp`,
 `adac/emitter/QbeStatements.cpp`, `adac/sema/SemaCalls.cpp`,
 `adac/sema/SemaDecl.cpp`, `adac/sema/SemaPackages.cpp`, `adac/UnitLoader.cpp`.
 
-- [ ] Implement Ada scalar `out`/`in out` copy-in/copy-out behavior (suggested
-  next step). Give each formal its own value storage, initialize it according
-  to its mode, and check the actual object's subtype when copying back on normal
-  return. Propagated exceptions must skip copy-back. The current implementation
-  passes all writable parameters by reference, allowing writes through a wider
-  formal to bypass a narrower actual's constraint. Test static and runtime
-  actual subtypes, failed copy-in/copy-back, nested calls, aliased actuals,
-  handlers, and exceptional returns. Keep imported C conventions and composite
-  parameter mechanisms separate.
+- [x] Implement Ada scalar `out`/`in out` copy-in/copy-out behavior. Each formal
+  has separate storage, initialized according to its mode. Normal return checks
+  the actual object's subtype before copy-back; propagated exceptions skip it.
+  Copy-back uses formal declaration order, and actual addresses are evaluated
+  once. Imported C conventions and composite parameter mechanisms stay separate.
+  Covered by `scalarcopy.adb`, `scalarcopychecks.adb`, and `scalarcopyerrors.adb`:
+  static/runtime subtypes, failed copy-in/copy-back, nested calls and captures,
+  aliased actuals, handlers, exceptional/early returns, component actuals,
+  recursion, 64-bit integers, enumeration, real and access values.
 - [x] Diagnose value returns from procedures, bare returns from functions, and
   returns outside subprograms. Every result representation now raises
   `Program_Error` on fallthrough, including after a handled exception. Covered
@@ -213,8 +213,8 @@ sizes, signed small representations, invalid size clauses, and unsupported impor
   and `runtimescalarlibraryerrors.ads`.
 - [ ] Extend runtime scalar constraints to anonymous subtype indications,
   library declarations, real subtypes, `'Width`, and streaming. These cases
-  remain diagnosed. Scalar `out`/`in out` copy-back is the next correctness step
-  listed under Calls, exceptions, and elaboration.
+  remain diagnosed. Scalar `out`/`in out` copy-back now checks saved runtime
+  bounds, as listed under Calls, exceptions, and elaboration.
 - [ ] Library-level dynamic arrays/types. Unsupported cases have diagnostics in
   `runtimearraylibraryerrors.ads`; local named array constraints are implemented
   below.
@@ -383,11 +383,10 @@ These are later projects with substantial runtime requirements.
 - [ ] Optimize checked arithmetic only after preserving its failure behavior in
   tests; the current runtime helpers provide a correctness baseline.
 
-Suggested next step: Ada scalar `out`/`in out` copy-in/copy-out with checks on
-actual-object subtypes. Runtime discrete subtype bounds are now implemented;
-correct copy-back is needed to prevent wider formals from bypassing those checks.
-Start with Ada scalar calls and normal/exceptional return behavior; leave imported
-C conventions and composite parameter mechanisms separate. Library-level dynamic
+Scalar `out`/`in out` copy-in/copy-out and runtime discrete subtype bounds are
+now implemented. Suggested next step: enforce array type identity independently
+of element-type equality, preserving contextual typing of literals and aggregates
+(listed under Composite values and returns). Library-level dynamic
 arrays, runtime-constrained components, and wider descriptor indices/lengths
 remain later array follow-ups.
 Modular types can be developed as a separate bounded extension after the numeric
