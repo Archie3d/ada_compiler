@@ -374,6 +374,15 @@ and `>=` are supported; assigning a value of a different length raises
 
 ### Composite comparisons
 
+Array types have declaration identity: two separately declared types are
+incompatible even when their bounds and component types match. Subtypes and
+slices retain the parent array type, and bounds may differ when assigning or
+comparing values of that type. String literals and aggregates take their type
+from context; a literal matching two array overloads is ambiguous. Character
+concatenation preserves the selected character array type. Explicit array
+conversions are checked separately; the supported cross-type subset requires
+identical component subtype objects and compatible (or integer) index types.
+
 Array equality compares corresponding elements by position, independently of
 lower bounds, and requires equal lengths. Null arrays compare equal even when
 their bounds differ. Comparison is recursive for record and array elements;

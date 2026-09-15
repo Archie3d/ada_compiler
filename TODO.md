@@ -84,9 +84,16 @@ Primary code: `adac/QbeEmitter.cpp`, `adac/Type.cpp`,
 - [x] Compare only the active components of variant records, after checking common
   fields and discriminants. Covered by `recordcompare.adb`, including deterministic
   differences in inactive storage and nested variant records.
-- [ ] Enforce array type identity independently of element-type equality;
-  `typesCompatible` currently accepts distinct array types with the same element
-  root type. Preserve contextual typing of string literals and aggregates.
+- [x] Enforce array type identity independently of element-type equality.
+  Subtypes and slices retain their declared array identity; distinct declarations
+  are incompatible in assignments, calls, returns, comparisons, qualifications,
+  and initializers. String literals, character concatenations, and aggregates
+  use contextual types. Covered by `arrayidentity.adb`, `arrayidentityerrors.adb`,
+  and `arrayliteralambiguity.adb`, including overload selection and ambiguity.
+- [ ] Audit explicit array conversions for static component-subtype matching,
+  index conversions, bound sliding, view conversions, and runtime checks.
+  The current supported cross-type conversion requires identical component
+  subtype objects and compatible index types (or two integer index types).
 - [ ] **Audit** aggregate completeness, duplicate choices, record defaults, array
   sliding, overlapping slice assignments, and component subtype checks.
 - [ ] Preserve constraints and defaults for every name in a grouped component
@@ -384,9 +391,9 @@ These are later projects with substantial runtime requirements.
   tests; the current runtime helpers provide a correctness baseline.
 
 Scalar `out`/`in out` copy-in/copy-out and runtime discrete subtype bounds are
-now implemented. Suggested next step: enforce array type identity independently
-of element-type equality, preserving contextual typing of literals and aggregates
-(listed under Composite values and returns). Library-level dynamic
+now implemented, along with array type identity checks. Suggested next step:
+preserve constraints and defaults for every name in grouped record component
+declarations (listed under Composite values and returns). Library-level dynamic
 arrays, runtime-constrained components, and wider descriptor indices/lengths
 remain later array follow-ups.
 Modular types can be developed as a separate bounded extension after the numeric

@@ -53,6 +53,13 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
         }
 
         auto present = [&](const FieldInfo& field) { return field.variant < 0 || field.variant == variant; };
+        auto analyzeComponent = [&](Expr* value, Type* fieldType) {
+            Type* valueType = analyzeExpr(value, scope, fieldType);
+            if (!typesCompatible(fieldType, valueType)) {
+                m_diagnostics.error(value->location, "the record component has an incompatible type");
+            }
+            adaptUniversal(value, fieldType);
+        };
         bool complained = false;
 
         expr->resolvedFields.assign(target->fields.size(), nullptr);
@@ -61,7 +68,7 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
             if (component.isOthers) {
                 for (std::size_t i = 0; i < target->fields.size(); ++i) {
                     if (expr->resolvedFields[i] == nullptr && present(target->fields[i])) {
-                        analyzeExpr(component.value.get(), scope, target->fields[i].type);
+                        analyzeComponent(component.value.get(), target->fields[i].type);
                         expr->resolvedFields[i] = component.value.get();
                     }
                 }
@@ -76,8 +83,7 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
                     break;
                 }
                 Type* fieldType = target->fields[positional].type;
-                analyzeExpr(component.value.get(), scope, fieldType);
-                adaptUniversal(component.value.get(), fieldType);
+                analyzeComponent(component.value.get(), fieldType);
                 expr->resolvedFields[positional] = component.value.get();
                 ++positional;
                 continue;
@@ -100,8 +106,7 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
                         }
                         break;
                     }
-                    analyzeExpr(component.value.get(), scope, field.type);
-                    adaptUniversal(component.value.get(), field.type);
+                    analyzeComponent(component.value.get(), field.type);
                     expr->resolvedFields[field.index] = component.value.get();
                     break;
                 }
@@ -137,12 +142,13 @@ Type* Sema::analyzeAggregate(AggregateExpr* expr, Scope* scope, Type* expected)
                                target->index != nullptr ? target->index : m_types.integerType());
             }
         }
-        if (target->arrayRank > 1 && component.value->kind != ExprKind::Aggregate
-            && !(target->arrayRank == 2 && component.value->kind == ExprKind::StringLiteral)) {
+        bool invalidRow = target->arrayRank > 1 && component.value->kind != ExprKind::Aggregate
+            && !(target->arrayRank == 2 && component.value->kind == ExprKind::StringLiteral);
+        if (invalidRow) {
             m_diagnostics.error(component.value->location, "multidimensional aggregate requires nested subaggregates");
         }
         Type* valueType = analyzeExpr(component.value.get(), scope, target->element);
-        if (!typesCompatible(target->element, valueType)) {
+        if (!invalidRow && !typesCompatible(target->element, valueType)) {
             m_diagnostics.error(component.value->location, "aggregate component has an incompatible type");
         }
         adaptUniversal(component.value.get(), target->element);

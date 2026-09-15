@@ -1,0 +1,15 @@
+arrayidentityerrors.adb:8:20: error: initial value is not compatible with the declared subtype
+arrayidentityerrors.adb:13:38: error: the default expression has an incompatible type
+arrayidentityerrors.adb:19:9: error: the returned value has an incompatible type
+arrayidentityerrors.adb:25:26: error: the component default has an incompatible type
+arrayidentityerrors.adb:27:29: error: the record component has an incompatible type
+arrayidentityerrors.adb:29:28: error: the allocator initializer has an incompatible type
+arrayidentityerrors.adb:31:5: error: the assigned value has an incompatible type
+arrayidentityerrors.adb:32:5: error: the assigned value has an incompatible type
+arrayidentityerrors.adb:33:10: error: no visible subprogram matches this call
+arrayidentityerrors.adb:34:10: error: no visible subprogram matches this call
+arrayidentityerrors.adb:35:15: error: a qualified expression must have the named type
+arrayidentityerrors.adb:36:10: error: the operands of a comparison must have the same type
+arrayidentityerrors.adb:39:5: error: the assigned value has an incompatible type
+arrayidentityerrors.adb:40:5: error: the assigned value has an incompatible type
+arrayidentityerrors.adb:41:12: error: concatenation requires characters or arrays of the same character array type

@@ -165,7 +165,8 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
             }
             ExprKind kind = association.value->kind;
             bool needsContext = kind == ExprKind::Call || kind == ExprKind::Identifier
-                || kind == ExprKind::Selected || kind == ExprKind::Allocator || kind == ExprKind::Null;
+                || kind == ExprKind::Selected || kind == ExprKind::Allocator || kind == ExprKind::Null
+                || kind == ExprKind::Binary;
             analyzeExpr(association.value.get(), scope, differs || !needsContext ? nullptr : context);
         }
     }
@@ -187,7 +188,28 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
         }
 
         bool numeric = isNumeric(baseType(expr->type)) && isNumeric(baseType(operand->type));
-        if (!numeric && !typesCompatible(expr->type, operand->type)) {
+        // Explicit array conversions are separate from implicit compatibility.
+        // Retain the supported conversion between arrays with identical component
+        // subtypes and corresponding compatible index types.
+        Type* targetAxis = expr->type;
+        Type* sourceAxis = operand->type;
+        bool arrayConversion = targetAxis != nullptr && sourceAxis != nullptr
+            && targetAxis->kind == TypeKind::Array && sourceAxis->kind == TypeKind::Array
+            && targetAxis->arrayRank == sourceAxis->arrayRank;
+        if (arrayConversion) {
+            int rank = targetAxis->arrayRank;
+            for (int dimension = 0; dimension < rank; ++dimension) {
+                bool integerIndices = targetAxis->index->kind == TypeKind::Integer
+                    && sourceAxis->index->kind == TypeKind::Integer;
+                if (!integerIndices && !typesCompatible(targetAxis->index, sourceAxis->index)) {
+                    arrayConversion = false;
+                }
+                targetAxis = targetAxis->element;
+                sourceAxis = sourceAxis->element;
+            }
+            arrayConversion = arrayConversion && targetAxis == sourceAxis;
+        }
+        if (!numeric && !arrayConversion && !typesCompatible(expr->type, operand->type)) {
             m_diagnostics.error(expr->location, "this type conversion is not allowed");
         }
         if (operand->isStatic && expr->type->m_scalarBoundsSymbol == nullptr
@@ -231,8 +253,26 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
                 }
                 // An argument still without a type is an aggregate, which suits
                 // whichever composite parameter it lands on.
-                if (expr->arguments[i].value->type != nullptr
-                    && !typesCompatible(candidate->parameters[index]->type, expr->arguments[i].value->type)) {
+                auto matchesArgument = [&](auto&& self, Expr* value, Type* formal) -> bool {
+                    if (value->kind == ExprKind::StringLiteral) {
+                        return m_types.isString(formal);
+                    }
+                    if (value->kind == ExprKind::Binary
+                        && static_cast<BinaryExpr*>(value)->op == BinaryOp::Concatenate) {
+                        if (!m_types.isString(formal)) {
+                            return false;
+                        }
+                        auto* concat = static_cast<BinaryExpr*>(value);
+                        for (Expr* part : { concat->left.get(), concat->right.get() }) {
+                            if (!m_types.isCharacter(part->type) && !self(self, part, formal)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                    return typesCompatible(formal, value->type);
+                };
+                if (!matchesArgument(matchesArgument, expr->arguments[i].value.get(), candidate->parameters[index]->type)) {
                     matches = false;
                     break;
                 }
@@ -277,7 +317,9 @@ Type* Sema::analyzeCall(CallExpr* expr, Scope* scope, Type* expected)
             }
             Expr* argument = expr->arguments[i].value.get();
             adaptUniversal(argument, chosen->parameters[index]->type);
-            if (argument->kind == ExprKind::Aggregate || argument->kind == ExprKind::StringLiteral
+            bool concatenation = argument->kind == ExprKind::Binary
+                && static_cast<BinaryExpr*>(argument)->op == BinaryOp::Concatenate;
+            if (concatenation || argument->kind == ExprKind::Aggregate || argument->kind == ExprKind::StringLiteral
                 || argument->kind == ExprKind::Null || argument->kind == ExprKind::Allocator) {
                 analyzeExpr(argument, scope, chosen->parameters[index]->type);
             }

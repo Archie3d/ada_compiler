@@ -6,6 +6,25 @@
 using SemaSupport::isUniversal;
 using SemaSupport::adaptUniversal;
 
+namespace
+{
+
+bool isCharacterLiteralExpression(const Expr* expr)
+{
+    if (expr->kind == ExprKind::StringLiteral || expr->kind == ExprKind::CharacterLiteral) {
+        return true;
+    }
+    if (expr->kind == ExprKind::Binary) {
+        const auto* binary = static_cast<const BinaryExpr*>(expr);
+        return binary->op == BinaryOp::Concatenate
+            && isCharacterLiteralExpression(binary->left.get())
+            && isCharacterLiteralExpression(binary->right.get());
+    }
+    return false;
+}
+
+}
+
 Type* Sema::analyzeExpr(Expr* expr, Scope* scope, Type* expected)
 {
     if (expr == nullptr) {
@@ -40,7 +59,8 @@ Type* Sema::analyzeExpr(Expr* expr, Scope* scope, Type* expected)
     }
     case ExprKind::StringLiteral: {
         auto* literal = static_cast<StringLiteralExpr*>(expr);
-        Type* type = m_types.makeSubtype(anonymousTypeName(), m_types.stringType(), 0, 0);
+        Type* parent = m_types.isString(expected) ? expected : m_types.stringType();
+        Type* type = m_types.makeSubtype(anonymousTypeName(), rootType(parent), 0, 0);
         type->constrained = true;
         type->indexLow = 1;
         type->indexHigh = static_cast<long long>(literal->value.size());
@@ -71,7 +91,10 @@ Type* Sema::analyzeExpr(Expr* expr, Scope* scope, Type* expected)
     case ExprKind::Qualified: {
         auto* qualified = static_cast<QualifiedExpr*>(expr);
         Type* type = resolveTypeName(qualified->typeLower, scope, qualified->location);
-        analyzeExpr(qualified->operand.get(), scope, type);
+        Type* operand = analyzeExpr(qualified->operand.get(), scope, type);
+        if (!typesCompatible(type, operand)) {
+            m_diagnostics.error(expr->location, "a qualified expression must have the named type");
+        }
         adaptUniversal(qualified->operand.get(), type);
         expr->type = type;
         expr->isStatic = qualified->operand->isStatic && type != nullptr && type->m_scalarBoundsSymbol == nullptr;
@@ -111,7 +134,10 @@ Type* Sema::analyzeAllocator(AllocatorExpr* expr, Scope* scope, Type* expected)
 
     expr->designated = designated;
     if (expr->value != nullptr) {
-        analyzeExpr(expr->value.get(), scope, designated);
+        Type* value = analyzeExpr(expr->value.get(), scope, designated);
+        if (!typesCompatible(designated, value)) {
+            m_diagnostics.error(expr->value->location, "the allocator initializer has an incompatible type");
+        }
         adaptUniversal(expr->value.get(), designated);
     }
 
@@ -171,8 +197,14 @@ Type* Sema::analyzeBinaryOperation(BinaryExpr* expr, Scope* scope, Type* expecte
     case BinaryOp::LessEqual:
     case BinaryOp::Greater:
     case BinaryOp::GreaterEqual: {
-        Type* left = analyzeExpr(expr->left.get(), scope, nullptr);
-        Type* right = analyzeExpr(expr->right.get(), scope, isUniversal(left) ? nullptr : left);
+        bool contextualLeft = (expr->left->kind != ExprKind::CharacterLiteral
+                               && isCharacterLiteralExpression(expr->left.get()))
+            || expr->left->kind == ExprKind::Aggregate;
+        Type* right = contextualLeft ? analyzeExpr(expr->right.get(), scope, nullptr) : nullptr;
+        Type* left = analyzeExpr(expr->left.get(), scope, right);
+        if (!contextualLeft) {
+            right = analyzeExpr(expr->right.get(), scope, isUniversal(left) ? nullptr : left);
+        }
         // Compatibility is judged before adaptation, which would otherwise give
         // a literal the very type it is being compared against.
         if (!typesCompatible(left, right)) {
@@ -199,8 +231,23 @@ Type* Sema::analyzeBinaryOperation(BinaryExpr* expr, Scope* scope, Type* expecte
     }
 
     case BinaryOp::Concatenate: {
-        Type* left = analyzeExpr(expr->left.get(), scope, nullptr);
-        Type* right = analyzeExpr(expr->right.get(), scope, nullptr);
+        Type* context = m_types.isString(expected) ? expected : nullptr;
+        Type* left = analyzeExpr(expr->left.get(), scope, context);
+        Type* right = analyzeExpr(expr->right.get(), scope, context != nullptr ? context : left);
+        if (context == nullptr) {
+            context = m_types.isString(left) ? left : right;
+            if (isCharacterLiteralExpression(expr->left.get()) && m_types.isString(right)) {
+                context = right;
+                left = analyzeExpr(expr->left.get(), scope, context);
+            }
+        }
+        auto validOperand = [&](Type* type) {
+            return m_types.isCharacter(type)
+                || (m_types.isString(type) && typesCompatible(context, type));
+        };
+        if (!validOperand(left) || !validOperand(right)) {
+            m_diagnostics.error(expr->location, "concatenation requires characters or arrays of the same character array type");
+        }
         long long length = 0;
         bool constrained = true;
         auto measure = [&](Type* type) {
@@ -220,7 +267,8 @@ Type* Sema::analyzeBinaryOperation(BinaryExpr* expr, Scope* scope, Type* expecte
         };
         measure(left);
         measure(right);
-        Type* result = m_types.makeSubtype(anonymousTypeName(), m_types.stringType(), 0, 0);
+        Type* result = m_types.makeSubtype(anonymousTypeName(),
+                                         m_types.isString(context) ? rootType(context) : m_types.stringType(), 0, 0);
         result->constrained = constrained;
         result->indexLow = 1;
         result->indexHigh = constrained ? length : 0;

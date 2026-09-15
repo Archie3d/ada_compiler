@@ -1,0 +1,2 @@
+arrayliteralambiguity.adb:12:10: error: ambiguous subprogram call
+arrayliteralambiguity.adb:13:10: error: ambiguous subprogram call

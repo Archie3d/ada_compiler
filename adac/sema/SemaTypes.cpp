@@ -338,7 +338,10 @@ void Sema::layoutRecord(TypeDecl* decl, TypeDefinition* definition, Type* type, 
         info.variant = variantIndex;
         info.isDiscriminant = isDiscriminant;
         if (field.defaultValue) {
-            analyzeExpr(field.defaultValue.get(), scope, info.type);
+            Type* valueType = analyzeExpr(field.defaultValue.get(), scope, info.type);
+            if (!typesCompatible(info.type, valueType)) {
+                m_diagnostics.error(field.defaultValue->location, "the component default has an incompatible type");
+            }
             adaptUniversal(field.defaultValue.get(), info.type);
             info.defaultValue = field.defaultValue.get();
         }
@@ -760,9 +763,8 @@ bool Sema::typesCompatible(Type* target, Type* source) const
         }
         return concrete->kind == TypeKind::Float;
     }
-    if (left->kind == TypeKind::Array && right->kind == TypeKind::Array) {
-        return left->arrayRank == right->arrayRank && rootType(left->element) == rootType(right->element);
-    }
+    // Array declarations introduce distinct types, even with identical bounds
+    // and components. Subtypes already share identity through the root above.
     return false;
 }
 
