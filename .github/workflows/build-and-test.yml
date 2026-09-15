@@ -1,0 +1,36 @@
+name: Build and Test
+
+defaults:
+  run:
+    shell: bash
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - master
+
+env:
+  type: Release
+  dir_build: ./build
+  dir_source: .
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up build directory
+        run: mkdir -p ${{ env.dir_build }}
+
+      - name: Configure CMake
+        run: cmake -S ${{ env.dir_source }} -B ${{ env.dir_build }} -DCMAKE_BUILD_TYPE=${{ env.type }}
+
+      - name: Build
+        run: cmake --build ${{ env.dir_build }} --config ${{ env.type }}
+
+      - name: Run tests
+        run: ctest --test-dir ${{ env.dir_build }} --output-on-failure
